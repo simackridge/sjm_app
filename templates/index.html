@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Home{% endblock %}
+
+{% block content %}
+<section class="hero card">
+  <div class="hero-copy">
+    <p class="eyebrow">Heating cover made simple</p>
+    <h1>Protect your boiler with an {{ company_name }} service plan</h1>
+    <p class="lead">
+      Fast enquiry process, clear plan options, digital signature, and a proper follow-up from our team.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="{{ url_for('signup') }}">Start your enquiry</a>
+      <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call {{ company_phone }}</a>
+    </div>
+
+    <div class="hero-points">
+      <span>Simple signup</span>
+      <span>Digital agreement</span>
+      <span>Priority for broken boilers</span>
+    </div>
+  </div>
+</section>
+
+<section class="grid-3">
+  <div class="card">
+    <h3>Essential</h3>
+    <p class="price">£11.00 / month</p>
+    <p>For eligible boilers in good working order.</p>
+  </div>
+  <div class="card">
+    <h3>Standard</h3>
+    <p class="price">£17.99 / month</p>
+    <p>Great all-round cover with stronger protection.</p>
+  </div>
+  <div class="card">
+    <h3>Complete</h3>
+    <p class="price">£23.99 / month</p>
+    <p>Our highest level of cover for maximum peace of mind.</p>
+  </div>
+</section>
+
+<section class="card note-card">
+  <h2>Important</h2>
+  <p>
+    Fix & Join is subject to inspection and eligibility. Terms and conditions apply.
+  </p>
+  <a class="text-link" href="{{ url_for('terms') }}">Read terms</a>
+</section>
+{% endblock %}

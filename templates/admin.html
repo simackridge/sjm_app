@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Admin{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="admin-top">
+    <div>
+      <h1>Admin dashboard</h1>
+      <p class="muted">Manage signups, statuses, notes, and exports.</p>
+    </div>
+    <div class="admin-actions">
+      <a class="btn btn-secondary" href="{{ url_for('export_csv') }}">Export CSV</a>
+      <form method="post" action="{{ url_for('admin_logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-secondary">Log out</button>
+      </form>
+    </div>
+  </div>
+
+  <form method="get" action="{{ url_for('admin') }}" class="filter-grid">
+    <div>
+      <label>Search</label>
+      <input type="text" name="search" value="{{ filters.search }}">
+    </div>
+
+    <div>
+      <label>Status</label>
+      <select name="status">
+        <option value="">All</option>
+        {% for s in valid_statuses %}
+          <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>Priority</label>
+      <select name="priority">
+        <option value="">All</option>
+        <option value="HIGH" {% if filters.priority == "HIGH" %}selected{% endif %}>HIGH</option>
+        <option value="NORMAL" {% if filters.priority == "NORMAL" %}selected{% endif %}>NORMAL</option>
+      </select>
+    </div>
+
+    <div class="checkbox-stack">
+      <label><input type="checkbox" name="broken_only" value="1" {% if filters.broken_only == "1" %}checked{% endif %}> Broken boiler only</label>
+      <label><input type="checkbox" name="fix_join_only" value="1" {% if filters.fix_join_only == "1" %}checked{% endif %}> Fix & Join only</label>
+      <label><input type="checkbox" name="marketing_only" value="1" {% if filters.marketing_only == "1" %}checked{% endif %}> Marketing opt-in only</label>
+    </div>
+
+    <div class="filter-actions">
+      <button type="submit" class="btn btn-primary">Apply filters</button>
+      <a class="btn btn-secondary" href="{{ url_for('admin') }}">Reset</a>
+    </div>
+  </form>
+</section>
+
+{% for signup in signups %}
+<section class="card admin-card {% if signup.priority == 'HIGH' %}admin-card-high{% endif %}">
+  <div class="admin-card-head">
+    <div>
+      <h2>{{ signup.full_name }}</h2>
+      <p class="muted">{{ signup.email }} | {{ signup.phone }} | {{ signup.postcode }}</p>
+    </div>
+    <div class="badge-row">
+      <span class="badge">{{ signup.selected_plan }}</span>
+      <span class="badge badge-dark">{{ signup.priority }}</span>
+      <span class="badge badge-soft">{{ signup.status }}</span>
+    </div>
+  </div>
+
+  <div class="admin-quick-actions">
+    <a class="btn btn-primary" href="tel:{{ signup.phone }}">Call</a>
+    <a class="btn btn-secondary" href="mailto:{{ signup.email }}">Email</a>
+    <a class="btn btn-secondary" href="https://wa.me/{{ signup.phone | replace(' ', '') | replace('+', '') | replace('(', '') | replace(')', '') }}" target="_blank">WhatsApp</a>
+    <a class="btn btn-secondary" href="{{ url_for('download_contract', signup_id=signup.id) }}">Agreement PDF</a>
+  </div>
+
+  <div class="admin-meta">
+    <p><strong>Created:</strong> {{ signup.created_at }}</p>
+    <p><strong>Contact time:</strong> {{ signup.contact_time or "Not specified" }}</p>
+    <p><strong>Boiler broken:</strong> {{ signup.boiler_broken }}</p>
+    <p><strong>Fix & Join:</strong> {{ signup.fix_and_join }}</p>
+    <p><strong>Marketing:</strong> {{ "Yes" if signup.marketing_opt_in == 1 else "No" }}</p>
+    <p><strong>Terms version:</strong> {{ signup.terms_version }}</p>
+    <p><strong>Privacy version:</strong> {{ signup.privacy_version }}</p>
+    <p><strong>Updated:</strong> {{ signup.updated_at }}</p>
+  </div>
+
+  <div class="admin-meta">
+    <p><strong>Address:</strong> {{ signup.address_line1 }} {{ signup.address_line2 or "" }}, {{ signup.city }}, {{ signup.postcode }}</p>
+    <p><strong>Boiler:</strong> {{ signup.boiler_make or "-" }} {{ signup.boiler_model or "" }} {{ signup.boiler_age or "" }}</p>
+    <p><strong>IP:</strong> {{ signup.ip_address or "-" }}</p>
+  </div>
+
+  <form method="post" action="{{ url_for('admin_update_signup', signup_id=signup.id) }}" class="form-grid one-col">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div>
+      <label>Status</label>
+      <select name="status">
+        {% for s in valid_statuses %}
+          <option value="{{ s }}" {% if signup.status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>Admin notes</label>
+      <textarea name="admin_notes" rows="5">{{ signup.admin_notes or "" }}</textarea>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary">Save update</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<section class="card">
+  <p>No signups found.</p>
+</section>
+{% endfor %}
+{% endblock %}

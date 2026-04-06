@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>Privacy Policy</h1>
+  <p><strong>Version:</strong> {{ privacy_version }}</p>
+  <p>
+    <a class="btn btn-primary" href="{{ url_for('static', filename=privacy_pdf_filename) }}" target="_blank">
+      Open Privacy PDF
+    </a>
+  </p>
+</section>
+{% endblock %}

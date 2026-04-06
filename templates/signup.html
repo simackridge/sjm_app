@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Sign up{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>Service plan enquiry</h1>
+  <p class="lead">Complete the form below and sign digitally to submit your enquiry.</p>
+
+  <form method="post" action="{{ url_for('submit') }}" class="form-grid" id="signupForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="website" value="" class="hp-field" tabindex="-1" autocomplete="off">
+
+    <div class="full">
+      <h2>Your details</h2>
+    </div>
+
+    <div>
+      <label>Full name *</label>
+      <input type="text" name="full_name" required>
+    </div>
+
+    <div>
+      <label>Email *</label>
+      <input type="email" name="email" required>
+    </div>
+
+    <div>
+      <label>Phone *</label>
+      <input type="text" name="phone" required>
+    </div>
+
+    <div>
+      <label>Address line 1 *</label>
+      <input type="text" name="address_line1" required>
+    </div>
+
+    <div>
+      <label>Address line 2</label>
+      <input type="text" name="address_line2">
+    </div>
+
+    <div>
+      <label>Town / city *</label>
+      <input type="text" name="city" required>
+    </div>
+
+    <div>
+      <label>Postcode *</label>
+      <input type="text" name="postcode" required>
+    </div>
+
+    <div>
+      <label>Existing customer?</label>
+      <select name="existing_customer">
+        <option value="">Please choose</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div class="full">
+      <h2>Boiler details</h2>
+    </div>
+
+    <div>
+      <label>Boiler make</label>
+      <input type="text" name="boiler_make">
+    </div>
+
+    <div>
+      <label>Boiler model</label>
+      <input type="text" name="boiler_model">
+    </div>
+
+    <div>
+      <label>Boiler age</label>
+      <input type="text" name="boiler_age">
+    </div>
+
+    <div>
+      <label>Is the boiler currently broken? *</label>
+      <select name="boiler_broken" required>
+        <option value="">Please choose</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Fix & Join</label>
+      <select name="fix_and_join">
+        <option value="">Please choose</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Preferred contact time</label>
+      <select name="contact_time">
+        <option value="">Please choose</option>
+        <option value="Morning">Morning</option>
+        <option value="Afternoon">Afternoon</option>
+        <option value="Evening">Evening</option>
+        <option value="Anytime">Anytime</option>
+      </select>
+    </div>
+
+    <div class="full">
+      <h2>Choose your plan</h2>
+    </div>
+
+    <div class="full plan-grid">
+      <label class="plan-card">
+        <input type="radio" name="selected_plan" value="Essential" required>
+        <span class="plan-name">Essential</span>
+        <span class="plan-price">£11.00 / month</span>
+      </label>
+
+      <label class="plan-card">
+        <input type="radio" name="selected_plan" value="Standard" required>
+        <span class="plan-name">Standard</span>
+        <span class="plan-price">£17.99 / month</span>
+      </label>
+
+      <label class="plan-card">
+        <input type="radio" name="selected_plan" value="Complete" required>
+        <span class="plan-name">Complete</span>
+        <span class="plan-price">£23.99 / month</span>
+      </label>
+    </div>
+
+    <div class="full">
+      <h2>Signature</h2>
+      <p class="muted">Please sign in the box below.</p>
+      <div class="signature-wrap">
+        <canvas id="signature-pad" width="900" height="220"></canvas>
+      </div>
+      <input type="hidden" name="signature" id="signature">
+      <div class="signature-actions">
+        <button type="button" class="btn btn-secondary" id="clear-signature">Clear signature</button>
+      </div>
+    </div>
+
+    <div class="full checkbox-row">
+      <label class="checkbox-label">
+        <input type="checkbox" name="marketing_opt_in">
+        I’m happy to receive updates and offers from {{ company_name }}.
+      </label>
+    </div>
+
+    <div class="full checkbox-row">
+      <label class="checkbox-label">
+        <input type="checkbox" name="terms_accepted" required>
+        I agree to the Terms & Conditions ({{ terms_version }}).
+      </label>
+      <a class="text-link" href="{{ url_for('terms') }}" target="_blank">View terms</a>
+    </div>
+
+    <div class="full checkbox-row">
+      <label class="checkbox-label">
+        <input type="checkbox" name="privacy_accepted" required>
+        I agree to the Privacy Policy ({{ privacy_version }}).
+      </label>
+      <a class="text-link" href="{{ url_for('privacy') }}" target="_blank">View privacy policy</a>
+    </div>
+
+    <div class="full card soft-card">
+      <strong>Important:</strong> Fix & Join is subject to inspection and eligibility.
+    </div>
+
+    <div class="full submit-row">
+      <button type="submit" class="btn btn-primary">Submit enquiry</button>
+      <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call instead</a>
+    </div>
+  </form>
+</section>
+
+<script>
+  const canvas = document.getElementById("signature-pad");
+  const hiddenInput = document.getElementById("signature");
+  const clearBtn = document.getElementById("clear-signature");
+  const form = document.getElementById("signupForm");
+  const ctx = canvas.getContext("2d");
+
+  let drawing = false;
+  let hasSigned = false;
+
+  function resizeCanvasForDisplay() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = 220 * ratio;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111111";
+    redrawBackground();
+  }
+
+  function redrawBackground() {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.clientWidth, 220);
+  }
+
+  function getPosition(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches && e.touches[0]) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  }
+
+  function startDraw(e) {
+    drawing = true;
+    hasSigned = true;
+    const pos = getPosition(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    e.preventDefault();
+  }
+
+  function draw(e) {
+    if (!drawing) return;
+    const pos = getPosition(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    e.preventDefault();
+  }
+
+  function endDraw() {
+    drawing = false;
+  }
+
+  canvas.addEventListener("mousedown", startDraw);
+  canvas.addEventListener("mousemove", draw);
+  window.addEventListener("mouseup", endDraw);
+
+  canvas.addEventListener("touchstart", startDraw, { passive: false });
+  canvas.addEventListener("touchmove", draw, { passive: false });
+  window.addEventListener("touchend", endDraw);
+
+  clearBtn.addEventListener("click", function () {
+    redrawBackground();
+    hasSigned = false;
+    hiddenInput.value = "";
+  });
+
+  form.addEventListener("submit", function (e) {
+    if (!hasSigned) {
+      e.preventDefault();
+      alert("Please add your signature before submitting.");
+      return;
+    }
+    hiddenInput.value = canvas.toDataURL("image/png");
+  });
+
+  window.addEventListener("load", resizeCanvasForDisplay);
+  window.addEventListener("resize", resizeCanvasForDisplay);
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Terms{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>Terms & Conditions</h1>
+  <p><strong>Version:</strong> {{ terms_version }}</p>
+  <p>
+    <a class="btn btn-primary" href="{{ url_for('static', filename=terms_pdf_filename) }}" target="_blank">
+      Open Terms PDF
+    </a>
+  </p>
+  <p>Important: Fix & Join is subject to inspection and eligibility.</p>
+</section>
+{% endblock %}
