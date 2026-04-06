@@ -1183,11 +1183,14 @@ def internal_error(error):
 # -----------------------------------------------------------------------------
 
 init_db()
+try:
+    init_db()
+except Exception as e:
+    print("Database init error:", e)
 
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "5001")),
         debug=os.environ.get("FLASK_DEBUG", "false").lower() == "true",
-    )
     )
