@@ -1182,10 +1182,12 @@ def internal_error(error):
 # Startup
 # -----------------------------------------------------------------------------
 
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "5001")),
         debug=os.environ.get("FLASK_DEBUG", "false").lower() == "true",
+    )
     )
