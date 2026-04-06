@@ -457,50 +457,73 @@ def build_contract_pdf(row):
     right = width - 20 * mm
     value_x = 72 * mm
 
-    # Page background
+    def draw_header():
+        header_height = 42 * mm
+        pdf.setFillColor(panel)
+        pdf.rect(0, height - header_height, width, header_height, fill=1, stroke=0)
+
+        logo_drawn = False
+        if COMPANY_LOGO_PATH and os.path.exists(COMPANY_LOGO_PATH):
+            try:
+                logo_reader = ImageReader(COMPANY_LOGO_PATH)
+                pdf.drawImage(
+                    logo_reader,
+                    left,
+                    height - 23 * mm,
+                    width=20 * mm,
+                    height=14 * mm,
+                    preserveAspectRatio=True,
+                    mask='auto'
+                )
+                logo_drawn = True
+            except Exception:
+                logo_drawn = False
+
+        header_x = left + (24 * mm if logo_drawn else 0)
+
+        pdf.setFillColor(accent)
+        pdf.setFont("Helvetica-Bold", 22)
+        pdf.drawString(header_x, height - 14 * mm, COMPANY_NAME)
+
+        pdf.setFillColor(HexColor("#ffffff"))
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(left, height - 24 * mm, "Signed Service Plan Agreement")
+
+        pdf.setFont("Helvetica", 9)
+        pdf.drawString(left, height - 31 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
+
+    def draw_footer():
+        pdf.setStrokeColor(HexColor("#dddddd"))
+        pdf.setLineWidth(0.8)
+        pdf.line(left, 20 * mm, right, 20 * mm)
+
+        pdf.setFillColor(light_text)
+        pdf.setFont("Helvetica", 9)
+        footer = f"{COMPANY_NAME} | {COMPANY_PHONE} | {COMPANY_EMAIL} | {COMPANY_REG}"
+        pdf.drawString(left, 14 * mm, footer)
+
+    def draw_label_value(y_val, label, value):
+        pdf.setFillColor(HexColor("#111111"))
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawString(left, y_val, label)
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(value_x, y_val, value if value else "")
+
+    def draw_section_heading(y_val, heading):
+        pdf.setFillColor(HexColor("#111111"))
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(left, y_val, heading)
+        pdf.setStrokeColor(HexColor("#e0e0e0"))
+        pdf.setLineWidth(0.8)
+        pdf.line(left, y_val - 4, 185 * mm, y_val - 4)
+
+    # PAGE 1
     pdf.setFillColor(HexColor("#ffffff"))
     pdf.rect(0, 0, width, height, fill=1, stroke=0)
+    draw_header()
 
-    # Header band
-    header_height = 42 * mm
-    pdf.setFillColor(panel)
-    pdf.rect(0, height - header_height, width, header_height, fill=1, stroke=0)
-
-    # Logo
-    logo_drawn = False
-    if COMPANY_LOGO_PATH and os.path.exists(COMPANY_LOGO_PATH):
-        try:
-            logo_reader = ImageReader(COMPANY_LOGO_PATH)
-            pdf.drawImage(
-                logo_reader,
-                left,
-                height - 23 * mm,
-                width=20 * mm,
-                height=14 * mm,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
-            logo_drawn = True
-        except Exception:
-            logo_drawn = False
-
-    header_x = left + (24 * mm if logo_drawn else 0)
-
-    # Header text
-    pdf.setFillColor(accent)
-    pdf.setFont("Helvetica-Bold", 22)
-    pdf.drawString(header_x, height - 14 * mm, COMPANY_NAME)
-
-    pdf.setFillColor(HexColor("#ffffff"))
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(left, height - 24 * mm, "Signed Service Plan Agreement")
-
-    pdf.setFont("Helvetica", 9)
-    pdf.drawString(left, height - 31 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
-
-    # Main content panel
     content_top = height - 50 * mm
-    content_bottom = 62 * mm
+    content_bottom = 35 * mm
     pdf.setFillColor(soft_bg)
     pdf.roundRect(
         left - 4 * mm,
@@ -514,76 +537,57 @@ def build_contract_pdf(row):
 
     y = height - 60 * mm
 
-    def draw_label_value(pdf_obj, x_label, x_val, y_val, label, value):
-        pdf_obj.setFillColor(HexColor("#111111"))
-        pdf_obj.setFont("Helvetica-Bold", 10)
-        pdf_obj.drawString(x_label, y_val, label)
-        pdf_obj.setFont("Helvetica", 10)
-        pdf_obj.drawString(x_val, y_val, value if value else "")
-
-    def draw_section_heading(pdf_obj, x_left, y_val, heading):
-        pdf_obj.setFillColor(HexColor("#111111"))
-        pdf_obj.setFont("Helvetica-Bold", 14)
-        pdf_obj.drawString(x_left, y_val, heading)
-        pdf_obj.setStrokeColor(HexColor("#e0e0e0"))
-        pdf_obj.setLineWidth(0.8)
-        pdf_obj.line(x_left, y_val - 4, 185 * mm, y_val - 4)
-
     # Customer details
-    draw_section_heading(pdf, left, y, "Customer details")
+    draw_section_heading(y, "Customer details")
     y -= 12 * mm
-
-    draw_label_value(pdf, left, value_x, y, "Name:", row["full_name"]); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Email:", row["email"]); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Phone:", row["phone"]); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Address:", row["address_line1"]); y -= 7 * mm
+    draw_label_value(y, "Name:", row["full_name"]); y -= 7 * mm
+    draw_label_value(y, "Email:", row["email"]); y -= 7 * mm
+    draw_label_value(y, "Phone:", row["phone"]); y -= 7 * mm
+    draw_label_value(y, "Address:", row["address_line1"]); y -= 7 * mm
     address_2 = " ".join(filter(None, [row.get("address_line2", ""), row.get("city", ""), row.get("postcode", "")]))
-    draw_label_value(pdf, left, value_x, y, "Town/Postcode:", address_2); y -= 11 * mm
+    draw_label_value(y, "Town/Postcode:", address_2); y -= 11 * mm
 
     # Plan details
-    draw_section_heading(pdf, left, y, "Plan details")
+    draw_section_heading(y, "Plan details")
     y -= 12 * mm
-
-    draw_label_value(pdf, left, value_x, y, "Selected plan:", row["selected_plan"]); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Monthly price:", f"£{row['monthly_price']}"); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Boiler broken:", row.get("boiler_broken", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Fix & Join:", row.get("fix_and_join", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Priority:", row.get("priority", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Preferred contact time:", row.get("contact_time", "")); y -= 11 * mm
+    draw_label_value(y, "Selected plan:", row["selected_plan"]); y -= 7 * mm
+    draw_label_value(y, "Monthly price:", f"£{row['monthly_price']}"); y -= 7 * mm
+    draw_label_value(y, "Boiler broken:", row.get("boiler_broken", "")); y -= 7 * mm
+    draw_label_value(y, "Fix & Join:", row.get("fix_and_join", "")); y -= 7 * mm
+    draw_label_value(y, "Priority:", row.get("priority", "")); y -= 7 * mm
+    draw_label_value(y, "Preferred contact time:", row.get("contact_time", "")); y -= 11 * mm
 
     # Boiler information
-    draw_section_heading(pdf, left, y, "Boiler information")
+    draw_section_heading(y, "Boiler information")
     y -= 12 * mm
-
-    draw_label_value(pdf, left, value_x, y, "Boiler make:", row.get("boiler_make", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Boiler model:", row.get("boiler_model", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Boiler age:", row.get("boiler_age", "")); y -= 11 * mm
+    draw_label_value(y, "Boiler make:", row.get("boiler_make", "")); y -= 7 * mm
+    draw_label_value(y, "Boiler model:", row.get("boiler_model", "")); y -= 7 * mm
+    draw_label_value(y, "Boiler age:", row.get("boiler_age", "")); y -= 11 * mm
 
     # Legal acceptance
-    draw_section_heading(pdf, left, y, "Legal acceptance")
+    draw_section_heading(y, "Legal acceptance")
     y -= 12 * mm
 
     terms_text = "Yes" if row.get("terms_accepted") == 1 else "No"
     privacy_text = "Yes" if row.get("privacy_accepted") == 1 else "No"
     marketing_text = "Yes" if row.get("marketing_opt_in") == 1 else "No"
 
-    draw_label_value(pdf, left, value_x, y, "Terms accepted:", terms_text); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Terms version:", row.get("terms_version", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Privacy accepted:", privacy_text); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Privacy version:", row.get("privacy_version", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "Marketing opt-in:", marketing_text); y -= 7 * mm
+    draw_label_value(y, "Terms accepted:", terms_text); y -= 7 * mm
+    draw_label_value(y, "Terms version:", row.get("terms_version", "")); y -= 7 * mm
+    draw_label_value(y, "Privacy accepted:", privacy_text); y -= 7 * mm
+    draw_label_value(y, "Privacy version:", row.get("privacy_version", "")); y -= 7 * mm
+    draw_label_value(y, "Marketing opt-in:", marketing_text); y -= 7 * mm
     draw_label_value(
-        pdf,
-        left,
-        value_x,
         y,
         "Signed at:",
         row["signed_at"].strftime("%d %b %Y %H:%M") if row.get("signed_at") else ""
     ); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "IP address:", row.get("ip_address", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "User agent:", (row.get("user_agent", "") or "")[:62]); y -= 10 * mm
+    draw_label_value(y, "IP address:", row.get("ip_address", "")); y -= 7 * mm
 
-    # Legal paragraph
+    # Shorten user agent hard to stop layout overflow
+    user_agent_short = (row.get("user_agent", "") or "")[:42]
+    draw_label_value(y, "User agent:", user_agent_short); y -= 10 * mm
+
     pdf.setFillColor(light_text)
     pdf.setFont("Helvetica", 9)
     legal_lines = [
@@ -598,19 +602,37 @@ def build_contract_pdf(row):
         text_obj.textLine(line)
     pdf.drawText(text_obj)
 
-    # Signature area - fully below main content panel
-    box_x = left
-    box_y = 28 * mm
-    box_w = 82 * mm
-    box_h = 22 * mm
+    draw_footer()
+
+    # PAGE 2 - signature page
+    pdf.showPage()
+    pdf.setFillColor(HexColor("#ffffff"))
+    pdf.rect(0, 0, width, height, fill=1, stroke=0)
+    draw_header()
+
+    pdf.setFillColor(soft_bg)
+    pdf.roundRect(
+        left - 4 * mm,
+        55 * mm,
+        width - 32 * mm,
+        height - 130 * mm,
+        4 * mm,
+        fill=1,
+        stroke=0
+    )
 
     pdf.setFillColor(dark)
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(left, box_y + box_h + 7 * mm, "Customer signature")
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(left, height - 72 * mm, "Customer signature")
 
     pdf.setFillColor(light_text)
-    pdf.setFont("Helvetica", 8)
-    pdf.drawString(left, box_y - 4 * mm, "Signed electronically")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left, height - 82 * mm, "Signed electronically as part of the service plan agreement.")
+
+    box_x = left
+    box_y = height - 130 * mm
+    box_w = 100 * mm
+    box_h = 35 * mm
 
     pdf.setStrokeColor(light_border)
     pdf.setLineWidth(1)
@@ -618,7 +640,7 @@ def build_contract_pdf(row):
 
     pdf.setStrokeColor(HexColor("#e8e8e8"))
     pdf.setLineWidth(0.8)
-    pdf.line(box_x + 5 * mm, box_y + 6 * mm, box_x + box_w - 5 * mm, box_y + 6 * mm)
+    pdf.line(box_x + 6 * mm, box_y + 8 * mm, box_x + box_w - 6 * mm, box_y + 8 * mm)
 
     signature = row.get("signature")
     if signature and signature.startswith("data:image/png;base64,"):
@@ -627,25 +649,32 @@ def build_contract_pdf(row):
             sig_reader = ImageReader(io.BytesIO(sig_bytes))
             pdf.drawImage(
                 sig_reader,
-                box_x + 6 * mm,
-                box_y + 4 * mm,
-                width=68 * mm,
-                height=13 * mm,
+                box_x + 8 * mm,
+                box_y + 7 * mm,
+                width=82 * mm,
+                height=18 * mm,
                 preserveAspectRatio=True,
                 mask='auto'
             )
         except Exception:
             pass
 
-    # Footer
-    pdf.setStrokeColor(HexColor("#dddddd"))
-    pdf.setLineWidth(0.8)
-    pdf.line(left, 20 * mm, right, 20 * mm)
+    pdf.setFillColor(HexColor("#111111"))
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(left, box_y - 14 * mm, "Signed by:")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left + 28 * mm, box_y - 14 * mm, row.get("full_name", ""))
 
-    pdf.setFillColor(light_text)
-    pdf.setFont("Helvetica", 9)
-    footer = f"{COMPANY_NAME} | {COMPANY_PHONE} | {COMPANY_EMAIL} | {COMPANY_REG}"
-    pdf.drawString(left, 14 * mm, footer)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(left, box_y - 22 * mm, "Date:")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(
+        left + 28 * mm,
+        box_y - 22 * mm,
+        row["signed_at"].strftime("%d %b %Y %H:%M") if row.get("signed_at") else ""
+    )
+
+    draw_footer()
 
     pdf.save()
     return temp.name
