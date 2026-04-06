@@ -157,6 +157,11 @@ h1{
   color:var(--muted);
 }
 
+.small-note{
+  font-size:.92rem;
+  margin-top:12px;
+}
+
 .cta-row{
   display:flex;
   gap:12px;
@@ -288,6 +293,12 @@ textarea{
   padding:16px;
   background:#101010;
   cursor:pointer;
+  transition:transform .15s ease,border-color .15s ease;
+}
+
+.plan-card:hover{
+  transform:translateY(-2px);
+  border-color:#ff6a00;
 }
 
 .plan-card input{
@@ -341,6 +352,14 @@ textarea{
 
 .success-card{
   max-width:760px;
+}
+
+.urgent-box{
+  background:#101010;
+  border:1px solid rgba(255,106,0,.35);
+  border-radius:16px;
+  padding:18px;
+  margin-top:18px;
 }
 
 .flash-wrap{
@@ -466,6 +485,10 @@ textarea{
   background:#3d2a16;
 }
 
+.badge-payment{
+  background:#1f3a2a;
+}
+
 .admin-meta{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -482,7 +505,22 @@ textarea{
   margin:10px 0 16px;
 }
 
-/* Properly hidden honeypot field */
+.trust-bar{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin:18px 0 26px;
+}
+
+.trust-bar div{
+  background:#101010;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px 14px;
+  color:#e8e8e8;
+  font-weight:700;
+}
+
 .hp-field{
   position:absolute !important;
   left:-9999px !important;
@@ -499,7 +537,8 @@ textarea{
   .plan-grid,
   .filter-grid,
   .admin-meta,
-  .form-grid{
+  .form-grid,
+  .trust-bar{
     grid-template-columns:1fr;
   }
 

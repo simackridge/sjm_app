@@ -19,10 +19,15 @@
 
   <h2>What happens next?</h2>
   <p>Our team will review your enquiry and contact you to confirm the next steps.</p>
-  <p>A copy of your signed agreement has been sent by email where available.</p>
+  <p>No payment is taken at this stage. If approved, we can then send over the next step for activation.</p>
+
+  <div class="urgent-box">
+    <p><strong>We’ve received your enquiry.</strong></p>
+    <p>If your boiler is broken, call us now for the fastest response.</p>
+  </div>
 
   <div class="cta-row">
-    <a class="btn btn-primary" href="tel:{{ company_phone }}">Call {{ company_phone }}</a>
+    <a class="btn btn-primary" href="tel:{{ company_phone }}">Call now</a>
     <a class="btn btn-secondary" href="https://wa.me/{{ whatsapp_number }}" target="_blank">WhatsApp us</a>
     <a class="btn btn-secondary" href="{{ url_for('index') }}">Back home</a>
   </div>

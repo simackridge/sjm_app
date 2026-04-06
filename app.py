@@ -89,6 +89,7 @@ VALID_BROKEN_VALUES = {"Yes", "No"}
 VALID_EXISTING_CUSTOMER_VALUES = {"Yes", "No", ""}
 VALID_CONTACT_TIMES = {"", "Morning", "Afternoon", "Evening", "Anytime"}
 VALID_PLAN_VALUES = set(PLAN_PRICES.keys())
+VALID_PAYMENT_STATUSES = {"Not sent", "Link sent", "Paid", "Failed", "Refunded"}
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 UK_POSTCODE_REGEX = re.compile(
@@ -164,7 +165,11 @@ def init_db():
                     ip_address TEXT,
                     user_agent TEXT,
                     status TEXT DEFAULT 'New',
-                    admin_notes TEXT DEFAULT ''
+                    admin_notes TEXT DEFAULT '',
+                    payment_status TEXT DEFAULT 'Not sent',
+                    stripe_checkout_url TEXT,
+                    stripe_customer_id TEXT,
+                    stripe_subscription_id TEXT
                 )
                 """
             )
@@ -180,11 +185,16 @@ def init_db():
         add_column_if_missing(conn, "signups", "user_agent", "TEXT")
         add_column_if_missing(conn, "signups", "status", "TEXT DEFAULT 'New'")
         add_column_if_missing(conn, "signups", "admin_notes", "TEXT DEFAULT ''")
+        add_column_if_missing(conn, "signups", "payment_status", "TEXT DEFAULT 'Not sent'")
+        add_column_if_missing(conn, "signups", "stripe_checkout_url", "TEXT")
+        add_column_if_missing(conn, "signups", "stripe_customer_id", "TEXT")
+        add_column_if_missing(conn, "signups", "stripe_subscription_id", "TEXT")
 
         with conn.cursor() as cur:
             cur.execute("UPDATE signups SET updated_at = created_at WHERE updated_at IS NULL")
             cur.execute("UPDATE signups SET status = 'New' WHERE status IS NULL OR status = ''")
             cur.execute("UPDATE signups SET admin_notes = '' WHERE admin_notes IS NULL")
+            cur.execute("UPDATE signups SET payment_status = 'Not sent' WHERE payment_status IS NULL OR payment_status = ''")
             cur.execute(
                 "UPDATE signups SET terms_version = %s WHERE terms_version IS NULL OR terms_version = ''",
                 (TERMS_VERSION,),
@@ -378,12 +388,8 @@ def send_customer_email(full_name, email, selected_plan, monthly_price, contact_
               <p style="margin:0;"><strong>Preferred contact time:</strong> {preferred_contact}</p>
             </div>
             <p style="margin:0 0 10px 0;"><strong>What happens next?</strong></p>
-            <p style="margin:0 0 16px 0;">Our team will review your enquiry and contact you to confirm the next steps.</p>
+            <p style="margin:0 0 16px 0;">Our team will review your enquiry and contact you to confirm the next steps. No payment is taken at this stage.</p>
             <p style="margin:0 0 16px 0;">A copy of your signed agreement is attached to this email.</p>
-            <div style="margin-top:20px;">
-              <a href="tel:{COMPANY_PHONE}" style="display:inline-block;margin-right:10px;padding:12px 18px;background:#ff6a00;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:bold;">Call us</a>
-              <a href="mailto:{COMPANY_EMAIL}" style="display:inline-block;padding:12px 18px;background:#2a2a2a;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:bold;">Email us</a>
-            </div>
           </div>
         </div>
         """,
@@ -417,7 +423,7 @@ def send_admin_email(full_name, email, phone, selected_plan, priority, boiler_br
             <p><strong>Boiler broken:</strong> {boiler_broken}</p>
             <p><strong>Fix & Join:</strong> {fix_and_join}</p>
             <p><strong>Preferred contact time:</strong> {contact_time or "Not specified"}</p>
-            <p><strong>Signed agreement:</strong> attached as PDF</p>
+            <p><strong>Payment status:</strong> Not sent</p>
           </div>
         </div>
         """,
@@ -430,25 +436,8 @@ def send_admin_email(full_name, email, phone, selected_plan, priority, boiler_br
 
 
 # -----------------------------------------------------------------------------
-# Premium PDF generation
+# PDF generation
 # -----------------------------------------------------------------------------
-
-def draw_label_value(pdf, x_label, x_value, y, label, value):
-    pdf.setFillColor(HexColor("#111111"))
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawString(x_label, y, label)
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(x_value, y, value if value else "")
-
-
-def draw_section_heading(pdf, left, y, heading):
-    pdf.setFillColor(HexColor("#111111"))
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(left, y, heading)
-    pdf.setStrokeColor(HexColor("#e0e0e0"))
-    pdf.setLineWidth(0.8)
-    pdf.line(left, y - 4, 185 * mm, y - 4)
-
 
 def build_contract_pdf(row):
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -468,14 +457,16 @@ def build_contract_pdf(row):
     right = width - 20 * mm
     value_x = 72 * mm
 
-    # Background
+    # Page background
     pdf.setFillColor(HexColor("#ffffff"))
     pdf.rect(0, 0, width, height, fill=1, stroke=0)
 
     # Header band
+    header_height = 42 * mm
     pdf.setFillColor(panel)
-    pdf.rect(0, height - 42 * mm, width, 42 * mm, fill=1, stroke=0)
+    pdf.rect(0, height - header_height, width, header_height, fill=1, stroke=0)
 
+    # Logo
     logo_drawn = False
     if COMPANY_LOGO_PATH and os.path.exists(COMPANY_LOGO_PATH):
         try:
@@ -483,9 +474,9 @@ def build_contract_pdf(row):
             pdf.drawImage(
                 logo_reader,
                 left,
-                height - 31 * mm,
-                width=24 * mm,
-                height=18 * mm,
+                height - 23 * mm,
+                width=20 * mm,
+                height=14 * mm,
                 preserveAspectRatio=True,
                 mask='auto'
             )
@@ -493,26 +484,50 @@ def build_contract_pdf(row):
         except Exception:
             logo_drawn = False
 
-    header_x = left + (28 * mm if logo_drawn else 0)
+    header_x = left + (24 * mm if logo_drawn else 0)
 
+    # Header text
     pdf.setFillColor(accent)
     pdf.setFont("Helvetica-Bold", 22)
-    pdf.drawString(header_x, height - 16 * mm, COMPANY_NAME)
+    pdf.drawString(header_x, height - 14 * mm, COMPANY_NAME)
 
     pdf.setFillColor(HexColor("#ffffff"))
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(left, height - 25 * mm, "Signed Service Plan Agreement")
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(left, height - 24 * mm, "Signed Service Plan Agreement")
 
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(left, height - 33 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
+    pdf.setFont("Helvetica", 9)
+    pdf.drawString(left, height - 31 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
 
-    # Main content box
-    content_top = height - 52 * mm
-    content_bottom = 28 * mm
+    # Main content panel
+    content_top = height - 50 * mm
+    content_bottom = 62 * mm
     pdf.setFillColor(soft_bg)
-    pdf.roundRect(left - 4 * mm, content_bottom, width - 32 * mm, content_top - content_bottom, 4 * mm, fill=1, stroke=0)
+    pdf.roundRect(
+        left - 4 * mm,
+        content_bottom,
+        width - 32 * mm,
+        content_top - content_bottom,
+        4 * mm,
+        fill=1,
+        stroke=0
+    )
 
-    y = height - 56 * mm
+    y = height - 60 * mm
+
+    def draw_label_value(pdf_obj, x_label, x_val, y_val, label, value):
+        pdf_obj.setFillColor(HexColor("#111111"))
+        pdf_obj.setFont("Helvetica-Bold", 10)
+        pdf_obj.drawString(x_label, y_val, label)
+        pdf_obj.setFont("Helvetica", 10)
+        pdf_obj.drawString(x_val, y_val, value if value else "")
+
+    def draw_section_heading(pdf_obj, x_left, y_val, heading):
+        pdf_obj.setFillColor(HexColor("#111111"))
+        pdf_obj.setFont("Helvetica-Bold", 14)
+        pdf_obj.drawString(x_left, y_val, heading)
+        pdf_obj.setStrokeColor(HexColor("#e0e0e0"))
+        pdf_obj.setLineWidth(0.8)
+        pdf_obj.line(x_left, y_val - 4, 185 * mm, y_val - 4)
 
     # Customer details
     draw_section_heading(pdf, left, y, "Customer details")
@@ -522,7 +537,6 @@ def build_contract_pdf(row):
     draw_label_value(pdf, left, value_x, y, "Email:", row["email"]); y -= 7 * mm
     draw_label_value(pdf, left, value_x, y, "Phone:", row["phone"]); y -= 7 * mm
     draw_label_value(pdf, left, value_x, y, "Address:", row["address_line1"]); y -= 7 * mm
-
     address_2 = " ".join(filter(None, [row.get("address_line2", ""), row.get("city", ""), row.get("postcode", "")]))
     draw_label_value(pdf, left, value_x, y, "Town/Postcode:", address_2); y -= 11 * mm
 
@@ -537,7 +551,7 @@ def build_contract_pdf(row):
     draw_label_value(pdf, left, value_x, y, "Priority:", row.get("priority", "")); y -= 7 * mm
     draw_label_value(pdf, left, value_x, y, "Preferred contact time:", row.get("contact_time", "")); y -= 11 * mm
 
-    # Boiler info
+    # Boiler information
     draw_section_heading(pdf, left, y, "Boiler information")
     y -= 12 * mm
 
@@ -545,7 +559,7 @@ def build_contract_pdf(row):
     draw_label_value(pdf, left, value_x, y, "Boiler model:", row.get("boiler_model", "")); y -= 7 * mm
     draw_label_value(pdf, left, value_x, y, "Boiler age:", row.get("boiler_age", "")); y -= 11 * mm
 
-    # Legal
+    # Legal acceptance
     draw_section_heading(pdf, left, y, "Legal acceptance")
     y -= 12 * mm
 
@@ -567,50 +581,44 @@ def build_contract_pdf(row):
         row["signed_at"].strftime("%d %b %Y %H:%M") if row.get("signed_at") else ""
     ); y -= 7 * mm
     draw_label_value(pdf, left, value_x, y, "IP address:", row.get("ip_address", "")); y -= 7 * mm
-    draw_label_value(pdf, left, value_x, y, "User agent:", (row.get("user_agent", "") or "")[:62]); y -= 12 * mm
+    draw_label_value(pdf, left, value_x, y, "User agent:", (row.get("user_agent", "") or "")[:62]); y -= 10 * mm
 
-    # Legal note
+    # Legal paragraph
     pdf.setFillColor(light_text)
     pdf.setFont("Helvetica", 9)
-    legal_text = (
-        "By signing this document, the customer confirms that the information provided is correct to the best of "
-        "their knowledge and that they have read and agreed to the linked Service Plan Terms & Conditions and "
-        "Privacy Policy. Fix & Join is subject to inspection and eligibility."
-    )
+    legal_lines = [
+        "By signing this document, the customer confirms that the information provided is correct to the best of their",
+        "knowledge and that they have read and agreed to the linked Service Plan Terms & Conditions and Privacy Policy.",
+        "Fix & Join is subject to inspection and eligibility."
+    ]
 
     text_obj = pdf.beginText(left, y)
-    text_obj.setLeading(13)
-    for line in [legal_text[i:i+112] for i in range(0, len(legal_text), 112)]:
+    text_obj.setLeading(11)
+    for line in legal_lines:
         text_obj.textLine(line)
     pdf.drawText(text_obj)
 
-    y -= 22 * mm
-
-    # Signature section
-    sig_y = max(40 * mm, y - 20 * mm)
+    # Signature area - fully below main content panel
+    box_x = left
+    box_y = 28 * mm
+    box_w = 82 * mm
+    box_h = 22 * mm
 
     pdf.setFillColor(dark)
     pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(left, sig_y + 36 * mm, "Customer signature")
+    pdf.drawString(left, box_y + box_h + 7 * mm, "Customer signature")
 
     pdf.setFillColor(light_text)
     pdf.setFont("Helvetica", 8)
-    pdf.drawString(left, sig_y - 4 * mm, "Signed electronically")
-
-    # Signature box
-    box_x = left
-    box_y = sig_y
-    box_w = 82 * mm
-    box_h = 28 * mm
+    pdf.drawString(left, box_y - 4 * mm, "Signed electronically")
 
     pdf.setStrokeColor(light_border)
     pdf.setLineWidth(1)
     pdf.roundRect(box_x, box_y, box_w, box_h, 4 * mm, stroke=1, fill=0)
 
-    # Inner signature guide line
     pdf.setStrokeColor(HexColor("#e8e8e8"))
     pdf.setLineWidth(0.8)
-    pdf.line(box_x + 5 * mm, box_y + 7 * mm, box_x + box_w - 5 * mm, box_y + 7 * mm)
+    pdf.line(box_x + 5 * mm, box_y + 6 * mm, box_x + box_w - 5 * mm, box_y + 6 * mm)
 
     signature = row.get("signature")
     if signature and signature.startswith("data:image/png;base64,"):
@@ -620,9 +628,9 @@ def build_contract_pdf(row):
             pdf.drawImage(
                 sig_reader,
                 box_x + 6 * mm,
-                box_y + 5 * mm,
-                width=70 * mm,
-                height=16 * mm,
+                box_y + 4 * mm,
+                width=68 * mm,
+                height=13 * mm,
                 preserveAspectRatio=True,
                 mask='auto'
             )
@@ -632,12 +640,12 @@ def build_contract_pdf(row):
     # Footer
     pdf.setStrokeColor(HexColor("#dddddd"))
     pdf.setLineWidth(0.8)
-    pdf.line(left, 23 * mm, right, 23 * mm)
+    pdf.line(left, 20 * mm, right, 20 * mm)
 
     pdf.setFillColor(light_text)
     pdf.setFont("Helvetica", 9)
     footer = f"{COMPANY_NAME} | {COMPANY_PHONE} | {COMPANY_EMAIL} | {COMPANY_REG}"
-    pdf.drawString(left, 16 * mm, footer)
+    pdf.drawString(left, 14 * mm, footer)
 
     pdf.save()
     return temp.name
@@ -789,10 +797,11 @@ def submit():
                     ip_address,
                     user_agent,
                     status,
-                    admin_notes
+                    admin_notes,
+                    payment_status
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -826,6 +835,7 @@ def submit():
                     user_agent,
                     "New",
                     "",
+                    "Not sent",
                 ),
             )
         conn.commit()
@@ -985,6 +995,8 @@ def export_csv():
         "Priority",
         "Status",
         "Admin Notes",
+        "Payment Status",
+        "Stripe Checkout URL",
         "Signed At",
         "Terms Accepted",
         "Privacy Accepted",
@@ -1019,6 +1031,8 @@ def export_csv():
             row["priority"],
             row.get("status"),
             row.get("admin_notes"),
+            row.get("payment_status"),
+            row.get("stripe_checkout_url"),
             row["signed_at"],
             row["terms_accepted"],
             row["privacy_accepted"],
@@ -1066,9 +1080,14 @@ def admin_update_signup(signup_id):
 
     status = clean_text(request.form.get("status"), 20)
     admin_notes = clean_text(request.form.get("admin_notes"), 5000)
+    payment_status = clean_text(request.form.get("payment_status"), 20)
 
     if status not in VALID_STATUSES:
         flash("Invalid status.", "error")
+        return redirect(url_for("admin"))
+
+    if payment_status not in VALID_PAYMENT_STATUSES:
+        flash("Invalid payment status.", "error")
         return redirect(url_for("admin"))
 
     conn = get_db_connection()
@@ -1079,10 +1098,11 @@ def admin_update_signup(signup_id):
                 UPDATE signups
                 SET status = %s,
                     admin_notes = %s,
+                    payment_status = %s,
                     updated_at = %s
                 WHERE id = %s
                 """,
-                (status, admin_notes, datetime.now(UTC), signup_id),
+                (status, admin_notes, payment_status, datetime.now(UTC), signup_id),
             )
         conn.commit()
     finally:
@@ -1134,7 +1154,7 @@ def admin():
     if marketing_only == "1":
         query += " AND marketing_opt_in = 1"
 
-    query += " ORDER BY id DESC"
+    query += " ORDER BY CASE WHEN priority = 'HIGH' THEN 0 ELSE 1 END, id DESC"
 
     conn = get_db_connection()
     try:
@@ -1156,6 +1176,7 @@ def admin():
             "marketing_only": marketing_only,
         },
         valid_statuses=sorted(VALID_STATUSES),
+        valid_payment_statuses=sorted(VALID_PAYMENT_STATUSES),
     )
 
 
@@ -1182,7 +1203,6 @@ def internal_error(error):
 # Startup
 # -----------------------------------------------------------------------------
 
-init_db()
 try:
     init_db()
 except Exception as e:

@@ -7,6 +7,12 @@
   <h1>Service plan enquiry</h1>
   <p class="lead">Complete the form below and sign digitally to submit your enquiry.</p>
 
+  <div class="trust-bar">
+    <div>✔ Fast response for breakdowns</div>
+    <div>✔ Trusted local heating engineers</div>
+    <div>✔ No payment taken at this stage</div>
+  </div>
+
   <form method="post" action="{{ url_for('submit') }}" class="form-grid" id="signupForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="text" name="website" value="" class="hp-field" tabindex="-1" autocomplete="off">
@@ -109,6 +115,7 @@
 
     <div class="full">
       <h2>Choose your plan</h2>
+      <p class="muted">Limited availability for new plans each month. Priority is given to broken boilers.</p>
     </div>
 
     <div class="full plan-grid">
@@ -141,6 +148,7 @@
       <div class="signature-actions">
         <button type="button" class="btn btn-secondary" id="clear-signature">Clear signature</button>
       </div>
+      <p class="muted small-note">Your details are secure. We will review your enquiry before any plan is activated. No payment is taken at this stage.</p>
     </div>
 
     <div class="full checkbox-row">
@@ -173,6 +181,7 @@
     <div class="full submit-row">
       <button type="submit" class="btn btn-primary">Submit enquiry</button>
       <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call instead</a>
+      <a class="btn btn-secondary" href="https://wa.me/{{ whatsapp_number }}" target="_blank">WhatsApp us</a>
     </div>
   </form>
 </section>
