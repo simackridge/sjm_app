@@ -9,6 +9,7 @@ from flask import (
     Response,
     send_file,
     abort,
+    after_this_request,
 )
 from datetime import datetime, UTC, timedelta
 import os
@@ -61,11 +62,8 @@ COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 COMPANY_LOGO_PATH = os.environ.get("COMPANY_LOGO_PATH", "static/logo.png")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
 
-# IMPORTANT:
-# This should now be an email address on your verified Resend domain.
-# Example: info@sjmheating.co.uk
-RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", COMPANY_EMAIL)
-
+# Must be an address on your verified Resend domain
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", COMPANY_EMAIL).strip()
 resend.api_key = os.environ.get("RESEND_API_KEY", "").strip()
 
 DB_NAME = os.environ.get("DB_NAME", "sjm_service")
@@ -112,8 +110,11 @@ def resend_is_configured():
 
 
 def get_resend_from_email():
-    sender = (RESEND_FROM_EMAIL or COMPANY_EMAIL or "").strip()
-    return sender
+    return (RESEND_FROM_EMAIL or COMPANY_EMAIL or "").strip()
+
+
+def safe_text(value):
+    return str(value or "").strip()
 
 
 # -----------------------------------------------------------------------------
@@ -211,7 +212,9 @@ def init_db():
             cur.execute("UPDATE signups SET updated_at = created_at WHERE updated_at IS NULL")
             cur.execute("UPDATE signups SET status = 'New' WHERE status IS NULL OR status = ''")
             cur.execute("UPDATE signups SET admin_notes = '' WHERE admin_notes IS NULL")
-            cur.execute("UPDATE signups SET payment_status = 'Not sent' WHERE payment_status IS NULL OR payment_status = ''")
+            cur.execute(
+                "UPDATE signups SET payment_status = 'Not sent' WHERE payment_status IS NULL OR payment_status = ''"
+            )
             cur.execute(
                 "UPDATE signups SET terms_version = %s WHERE terms_version IS NULL OR terms_version = ''",
                 (TERMS_VERSION,),
@@ -466,43 +469,257 @@ def send_admin_email(full_name, email, phone, selected_plan, priority, boiler_br
 # PDF generation
 # -----------------------------------------------------------------------------
 
-def draw_header():
+def build_contract_pdf(row):
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    temp.close()
+
+    pdf = pdf_canvas.Canvas(temp.name, pagesize=A4)
+    width, height = A4
+
+    accent = HexColor("#ff6a00")
+    dark = HexColor("#111111")
+    charcoal = HexColor("#1a1a1a")
+    soft_bg = HexColor("#f6f6f6")
+    mid_grey = HexColor("#666666")
+    line_grey = HexColor("#dddddd")
+    white = HexColor("#ffffff")
+
+    left = 18 * mm
+    right = width - 18 * mm
+    content_width = right - left
+
     header_height = 34 * mm
+    footer_line_y = 18 * mm
+    footer_text_y = 12 * mm
 
-    pdf.setFillColor(HexColor("#1a1a1a"))
-    pdf.rect(0, height - header_height, width, header_height, fill=1, stroke=0)
+    label_x = left + 6 * mm
+    value_x = left + 62 * mm
 
-    pdf.setFillColor(HexColor("#ff6a00"))
-    pdf.setFont("Helvetica-Bold", 20)
-    pdf.drawString(18 * mm, height - 13 * mm, COMPANY_NAME)
+    def draw_page_background():
+        pdf.setFillColor(white)
+        pdf.rect(0, 0, width, height, fill=1, stroke=0)
 
-    pdf.setFillColor(HexColor("#ffffff"))
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(18 * mm, height - 20 * mm, "Signed Service Plan Agreement")
+    def draw_header():
+        pdf.setFillColor(charcoal)
+        pdf.rect(0, height - header_height, width, header_height, fill=1, stroke=0)
 
-    pdf.setFont("Helvetica", 8.5)
-    pdf.drawString(18 * mm, height - 26 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
+        pdf.setFillColor(accent)
+        pdf.setFont("Helvetica-Bold", 20)
+        pdf.drawString(left, height - 13 * mm, COMPANY_NAME)
 
-    if COMPANY_LOGO_PATH and os.path.exists(COMPANY_LOGO_PATH):
+        pdf.setFillColor(white)
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(left, height - 21 * mm, "Signed Service Plan Agreement")
+
+        pdf.setFont("Helvetica", 8.5)
+        pdf.drawString(left, height - 27 * mm, f"Generated: {datetime.now(UTC).strftime('%d %b %Y %H:%M UTC')}")
+
+        if COMPANY_LOGO_PATH and os.path.exists(COMPANY_LOGO_PATH):
+            try:
+                logo_reader = ImageReader(COMPANY_LOGO_PATH)
+                logo_w = 24 * mm
+                logo_h = 14 * mm
+                logo_x = right - logo_w
+                logo_y = height - 22 * mm
+                pdf.drawImage(
+                    logo_reader,
+                    logo_x,
+                    logo_y,
+                    width=logo_w,
+                    height=logo_h,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+            except Exception as e:
+                print("Logo draw error:", e)
+
+    def draw_footer():
+        pdf.setStrokeColor(line_grey)
+        pdf.setLineWidth(0.8)
+        pdf.line(left, footer_line_y, right, footer_line_y)
+
+        pdf.setFillColor(mid_grey)
+        pdf.setFont("Helvetica", 8)
+        footer = f"{COMPANY_NAME} | {COMPANY_PHONE} | {COMPANY_EMAIL} | {COMPANY_REG}"
+        pdf.drawString(left, footer_text_y, footer)
+
+    def draw_section_title(y, title):
+        pdf.setFillColor(dark)
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(left + 4 * mm, y, title)
+        pdf.setStrokeColor(line_grey)
+        pdf.setLineWidth(0.6)
+        pdf.line(left + 4 * mm, y - 3, right - 4 * mm, y - 3)
+
+    def draw_label_value(y, label, value):
+        pdf.setFillColor(dark)
+        pdf.setFont("Helvetica-Bold", 9.5)
+        pdf.drawString(label_x, y, label)
+        pdf.setFont("Helvetica", 9.5)
+        pdf.drawString(value_x, y, safe_text(value))
+
+    def draw_card(x, y, w, h, fill=soft_bg):
+        pdf.setFillColor(fill)
+        pdf.roundRect(x, y, w, h, 4 * mm, fill=1, stroke=0)
+
+    # PAGE 1
+    draw_page_background()
+    draw_header()
+
+    main_card_x = left
+    main_card_y = 30 * mm
+    main_card_w = content_width
+    main_card_h = height - header_height - 42 * mm
+    draw_card(main_card_x, main_card_y, main_card_w, main_card_h)
+
+    y = height - header_height - 12 * mm
+
+    draw_section_title(y, "Customer details")
+    y -= 10 * mm
+    draw_label_value(y, "Name:", row.get("full_name", "")); y -= 5.8 * mm
+    draw_label_value(y, "Email:", row.get("email", "")); y -= 5.8 * mm
+    draw_label_value(y, "Phone:", row.get("phone", "")); y -= 5.8 * mm
+    draw_label_value(y, "Address:", row.get("address_line1", "")); y -= 5.8 * mm
+
+    address_tail = " ".join(
+        part for part in [
+            safe_text(row.get("address_line2", "")),
+            safe_text(row.get("city", "")),
+            safe_text(row.get("postcode", "")),
+        ] if part
+    )
+    draw_label_value(y, "Town/Postcode:", address_tail)
+    y -= 9 * mm
+
+    draw_section_title(y, "Plan details")
+    y -= 10 * mm
+    draw_label_value(y, "Selected plan:", row.get("selected_plan", "")); y -= 5.8 * mm
+    draw_label_value(y, "Monthly price:", f"£{safe_text(row.get('monthly_price', ''))}"); y -= 5.8 * mm
+    draw_label_value(y, "Boiler broken:", row.get("boiler_broken", "")); y -= 5.8 * mm
+    draw_label_value(y, "Fix & Join:", row.get("fix_and_join", "")); y -= 5.8 * mm
+    draw_label_value(y, "Priority:", row.get("priority", "")); y -= 5.8 * mm
+    draw_label_value(y, "Preferred contact time:", row.get("contact_time", "")); y -= 9 * mm
+
+    draw_section_title(y, "Boiler information")
+    y -= 10 * mm
+    draw_label_value(y, "Boiler make:", row.get("boiler_make", "")); y -= 5.8 * mm
+    draw_label_value(y, "Boiler model:", row.get("boiler_model", "")); y -= 5.8 * mm
+    draw_label_value(y, "Boiler age:", row.get("boiler_age", "")); y -= 9 * mm
+
+    draw_section_title(y, "Legal acceptance")
+    y -= 10 * mm
+
+    terms_text = "Yes" if row.get("terms_accepted") == 1 else "No"
+    privacy_text = "Yes" if row.get("privacy_accepted") == 1 else "No"
+    marketing_text = "Yes" if row.get("marketing_opt_in") == 1 else "No"
+
+    signed_at = row.get("signed_at")
+    signed_at_text = signed_at.strftime("%d %b %Y %H:%M") if signed_at else ""
+
+    draw_label_value(y, "Terms accepted:", terms_text); y -= 5.4 * mm
+    draw_label_value(y, "Terms version:", row.get("terms_version", "")); y -= 5.4 * mm
+    draw_label_value(y, "Privacy accepted:", privacy_text); y -= 5.4 * mm
+    draw_label_value(y, "Privacy version:", row.get("privacy_version", "")); y -= 5.4 * mm
+    draw_label_value(y, "Marketing opt-in:", marketing_text); y -= 5.4 * mm
+    draw_label_value(y, "Signed at:", signed_at_text); y -= 5.4 * mm
+    draw_label_value(y, "IP address:", row.get("ip_address", "")); y -= 5.4 * mm
+
+    user_agent_short = safe_text(row.get("user_agent", ""))[:42]
+    draw_label_value(y, "User agent:", user_agent_short)
+    y -= 9 * mm
+
+    summary_h = 22 * mm
+    summary_y = 24 * mm
+    draw_card(left + 4 * mm, summary_y, content_width - 8 * mm, summary_h, fill=white)
+
+    pdf.setFillColor(dark)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(left + 8 * mm, summary_y + 16 * mm, "Agreement summary")
+
+    pdf.setFillColor(mid_grey)
+    pdf.setFont("Helvetica", 8.2)
+    summary_lines = [
+        "The customer confirms the information provided is correct to the best of their knowledge.",
+        "By signing, the customer agrees to the Service Plan Terms & Conditions and Privacy Policy.",
+        "Fix & Join remains subject to inspection and eligibility where applicable.",
+    ]
+
+    text_obj = pdf.beginText(left + 8 * mm, summary_y + 11 * mm)
+    text_obj.setLeading(9)
+    for line in summary_lines:
+        text_obj.textLine(line)
+    pdf.drawText(text_obj)
+
+    draw_footer()
+
+    # PAGE 2
+    pdf.showPage()
+    draw_page_background()
+    draw_header()
+
+    sig_card_x = left
+    sig_card_y = 30 * mm
+    sig_card_w = content_width
+    sig_card_h = height - header_height - 42 * mm
+    draw_card(sig_card_x, sig_card_y, sig_card_w, sig_card_h)
+
+    pdf.setFillColor(dark)
+    pdf.setFont("Helvetica-Bold", 15)
+    pdf.drawString(left + 6 * mm, height - header_height - 18 * mm, "Customer signature")
+
+    pdf.setFillColor(mid_grey)
+    pdf.setFont("Helvetica", 9.5)
+    pdf.drawString(
+        left + 6 * mm,
+        height - header_height - 25 * mm,
+        "Signed electronically as part of the service plan agreement."
+    )
+
+    box_x = left + 6 * mm
+    box_y = height - header_height - 58 * mm
+    box_w = 105 * mm
+    box_h = 30 * mm
+
+    pdf.setStrokeColor(line_grey)
+    pdf.setLineWidth(1)
+    pdf.roundRect(box_x, box_y, box_w, box_h, 3 * mm, stroke=1, fill=0)
+
+    signature = row.get("signature")
+    if signature and signature.startswith("data:image/png;base64,"):
         try:
-            logo_reader = ImageReader(COMPANY_LOGO_PATH)
-
-            logo_w = 26 * mm
-            logo_h = 14 * mm
-            logo_x = width - 18 * mm - logo_w
-            logo_y = height - 18 * mm - logo_h
-
+            sig_bytes = base64.b64decode(signature.split(",", 1)[1])
+            sig_reader = ImageReader(io.BytesIO(sig_bytes))
             pdf.drawImage(
-                logo_reader,
-                logo_x,
-                logo_y,
-                width=logo_w,
-                height=logo_h,
+                sig_reader,
+                box_x + 6 * mm,
+                box_y + 5 * mm,
+                width=80 * mm,
+                height=16 * mm,
                 preserveAspectRatio=True,
                 mask="auto",
             )
-        except Exception as e:
-            print("Logo draw error:", e)
+        except Exception:
+            pass
+
+    name_y = box_y - 14 * mm
+    date_y = box_y - 22 * mm
+
+    pdf.setFillColor(dark)
+    pdf.setFont("Helvetica-Bold", 9.5)
+    pdf.drawString(left + 6 * mm, name_y, "Signed by:")
+    pdf.setFont("Helvetica", 9.5)
+    pdf.drawString(left + 30 * mm, name_y, safe_text(row.get("full_name", "")))
+
+    pdf.setFont("Helvetica-Bold", 9.5)
+    pdf.drawString(left + 6 * mm, date_y, "Date:")
+    pdf.setFont("Helvetica", 9.5)
+    pdf.drawString(left + 30 * mm, date_y, signed_at_text)
+
+    draw_footer()
+
+    pdf.save()
+    return temp.name
+
 
 # -----------------------------------------------------------------------------
 # Routes
@@ -614,7 +831,10 @@ def submit():
     conn = get_db_connection()
     try:
         if is_duplicate_submission(conn, email, phone, postcode, selected_plan):
-            flash("It looks like this enquiry was already submitted recently. Please wait a moment or contact us directly.", "error")
+            flash(
+                "It looks like this enquiry was already submitted recently. Please wait a moment or contact us directly.",
+                "error",
+            )
             return redirect(url_for("signup"))
 
         with conn.cursor() as cur:
@@ -922,6 +1142,15 @@ def download_contract(signup_id):
     pdf_path = build_contract_pdf(row)
     safe_name = "".join(c for c in row["full_name"] if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
     filename = f"{safe_name or 'signup'}_agreement_{signup_id}.pdf"
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except Exception as e:
+            print("Temp PDF cleanup error:", e)
+        return response
 
     return send_file(pdf_path, as_attachment=True, download_name=filename, mimetype="application/pdf")
 
