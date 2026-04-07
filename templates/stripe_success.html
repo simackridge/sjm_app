@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <h1>Payment successful</h1>
+  <p>Your service plan payment has been received.</p>
+  <p>Reference: {{ session_id }}</p>
+  <a href="{{ url_for('index') }}">Back to home</a>
+</div>
+{% endblock %}
