@@ -23,6 +23,7 @@ import tempfile
 
 from dotenv import load_dotenv
 import resend
+import stripe
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from reportlab.lib.pagesizes import A4
@@ -62,9 +63,26 @@ COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 COMPANY_LOGO_PATH = os.environ.get("COMPANY_LOGO_PATH", "static/logo.png")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
 
-# Must be an address on your verified Resend domain
+# Email / Resend
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", COMPANY_EMAIL).strip()
 resend.api_key = os.environ.get("RESEND_API_KEY", "").strip()
+
+# Stripe
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+
+STRIPE_PRICE_ESSENTIAL = os.environ.get("STRIPE_PRICE_ESSENTIAL", "").strip()
+STRIPE_PRICE_STANDARD = os.environ.get("STRIPE_PRICE_STANDARD", "").strip()
+STRIPE_PRICE_COMPLETE = os.environ.get("STRIPE_PRICE_COMPLETE", "").strip()
+
+STRIPE_SUCCESS_URL = os.environ.get(
+    "STRIPE_SUCCESS_URL",
+    "http://127.0.0.1:5001/stripe/success?session_id={CHECKOUT_SESSION_ID}",
+).strip()
+STRIPE_CANCEL_URL = os.environ.get(
+    "STRIPE_CANCEL_URL",
+    "http://127.0.0.1:5001/stripe/cancel",
+).strip()
 
 DB_NAME = os.environ.get("DB_NAME", "sjm_service")
 DB_USER = os.environ.get("DB_USER", "sjm_user")
@@ -111,6 +129,55 @@ def resend_is_configured():
 
 def get_resend_from_email():
     return (RESEND_FROM_EMAIL or COMPANY_EMAIL or "").strip()
+
+
+def stripe_is_configured():
+    return bool(
+        stripe.api_key
+        and STRIPE_PRICE_ESSENTIAL
+        and STRIPE_PRICE_STANDARD
+        and STRIPE_PRICE_COMPLETE
+    )
+
+
+def get_stripe_price_id(plan_name):
+    mapping = {
+        "Essential": STRIPE_PRICE_ESSENTIAL,
+        "Standard": STRIPE_PRICE_STANDARD,
+        "Complete": STRIPE_PRICE_COMPLETE,
+    }
+    return mapping.get(plan_name, "")
+
+
+def create_stripe_checkout_session(signup_id, full_name, email, selected_plan):
+    price_id = get_stripe_price_id(selected_plan)
+    if not price_id:
+        raise ValueError(f"No Stripe price configured for plan: {selected_plan}")
+
+    return stripe.checkout.Session.create(
+        mode="subscription",
+        success_url=STRIPE_SUCCESS_URL,
+        cancel_url=STRIPE_CANCEL_URL,
+        customer_email=email,
+        line_items=[
+            {
+                "price": price_id,
+                "quantity": 1,
+            }
+        ],
+        metadata={
+            "signup_id": str(signup_id),
+            "full_name": full_name,
+            "selected_plan": selected_plan,
+        },
+        subscription_data={
+            "metadata": {
+                "signup_id": str(signup_id),
+                "full_name": full_name,
+                "selected_plan": selected_plan,
+            }
+        },
+    )
 
 
 def safe_text(value):
@@ -187,7 +254,9 @@ def init_db():
                     payment_status TEXT DEFAULT 'Not sent',
                     stripe_checkout_url TEXT,
                     stripe_customer_id TEXT,
-                    stripe_subscription_id TEXT
+                    stripe_subscription_id TEXT,
+                    stripe_checkout_session_id TEXT,
+                    stripe_payment_link_sent_at TIMESTAMP
                 )
                 """
             )
@@ -207,6 +276,8 @@ def init_db():
         add_column_if_missing(conn, "signups", "stripe_checkout_url", "TEXT")
         add_column_if_missing(conn, "signups", "stripe_customer_id", "TEXT")
         add_column_if_missing(conn, "signups", "stripe_subscription_id", "TEXT")
+        add_column_if_missing(conn, "signups", "stripe_checkout_session_id", "TEXT")
+        add_column_if_missing(conn, "signups", "stripe_payment_link_sent_at", "TIMESTAMP")
 
         with conn.cursor() as cur:
             cur.execute("UPDATE signups SET updated_at = created_at WHERE updated_at IS NULL")
@@ -409,7 +480,7 @@ def send_customer_email(full_name, email, selected_plan, monthly_price, contact_
               <p style="margin:0;"><strong>Preferred contact time:</strong> {preferred_contact}</p>
             </div>
             <p style="margin:0 0 10px 0;"><strong>What happens next?</strong></p>
-            <p style="margin:0 0 16px 0;">Our team will review your enquiry and contact you to confirm the next steps. No payment is taken at this stage.</p>
+            <p style="margin:0 0 16px 0;">Our team will review your enquiry and contact you to confirm the next steps.</p>
             <p style="margin:0 0 16px 0;">A copy of your signed agreement is attached to this email.</p>
           </div>
         </div>
@@ -828,6 +899,7 @@ def submit():
 
     priority = determine_priority(boiler_broken, fix_and_join)
 
+    signup_id = None
     conn = get_db_connection()
     try:
         if is_duplicate_submission(conn, email, phone, postcode, selected_plan):
@@ -876,6 +948,7 @@ def submit():
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
+                RETURNING id
                 """,
                 (
                     datetime.now(UTC),
@@ -911,6 +984,7 @@ def submit():
                     "Not sent",
                 ),
             )
+            signup_id = cur.fetchone()["id"]
         conn.commit()
     finally:
         conn.close()
@@ -948,8 +1022,8 @@ def submit():
 
         pdf_path = build_contract_pdf(signup_row)
 
-        safe_name = "".join(c for c in full_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-        pdf_filename = f"{safe_name or 'signup'}_agreement.pdf"
+        safe_name_for_pdf = "".join(c for c in full_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+        pdf_filename = f"{safe_name_for_pdf or 'signup'}_agreement.pdf"
         pdf_attachment = build_pdf_attachment(pdf_path, pdf_filename)
 
         send_customer_email(
@@ -986,7 +1060,49 @@ def submit():
         "monthly_price": monthly_price,
         "priority": priority,
         "contact_time": contact_time,
+        "signup_id": signup_id,
     }
+
+    if stripe_is_configured() and signup_id:
+        try:
+            checkout_session = create_stripe_checkout_session(
+                signup_id=signup_id,
+                full_name=full_name,
+                email=email,
+                selected_plan=selected_plan,
+            )
+
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE signups
+                        SET stripe_checkout_session_id = %s,
+                            stripe_checkout_url = %s,
+                            payment_status = %s,
+                            updated_at = %s,
+                            stripe_payment_link_sent_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            checkout_session.id,
+                            checkout_session.url,
+                            "Link sent",
+                            datetime.now(UTC),
+                            datetime.now(UTC),
+                            signup_id,
+                        ),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            return redirect(checkout_session.url)
+
+        except Exception as e:
+            print("Stripe checkout error:", e)
+            flash("Your enquiry was saved, but we couldn't open the payment page just now.", "error")
 
     return redirect(url_for("success"))
 
@@ -1005,6 +1121,122 @@ def terms():
 @app.route("/privacy")
 def privacy():
     return render_template("privacy.html")
+
+
+@app.route("/stripe/success")
+def stripe_success():
+    session_id = request.args.get("session_id", "").strip()
+    return render_template("stripe_success.html", session_id=session_id)
+
+
+@app.route("/stripe/cancel")
+def stripe_cancel():
+    flash("Payment was cancelled. You can try again when you're ready.", "error")
+    return redirect(url_for("success"))
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        return "Invalid payload", 400
+    except stripe.error.SignatureVerificationError:
+        return "Invalid signature", 400
+
+    event_type = event["type"]
+    data_object = event["data"]["object"]
+
+    try:
+        if event_type == "checkout.session.completed":
+            metadata = data_object.get("metadata", {}) or {}
+            signup_id = metadata.get("signup_id")
+
+            if signup_id:
+                conn = get_db_connection()
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE signups
+                            SET payment_status = %s,
+                                stripe_customer_id = %s,
+                                stripe_subscription_id = %s,
+                                stripe_checkout_session_id = %s,
+                                updated_at = %s
+                            WHERE id = %s
+                            """,
+                            (
+                                "Paid",
+                                data_object.get("customer"),
+                                data_object.get("subscription"),
+                                data_object.get("id"),
+                                datetime.now(UTC),
+                                int(signup_id),
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+        elif event_type == "invoice.payment_failed":
+            subscription_id = data_object.get("subscription")
+            if subscription_id:
+                conn = get_db_connection()
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE signups
+                            SET payment_status = %s,
+                                updated_at = %s
+                            WHERE stripe_subscription_id = %s
+                            """,
+                            (
+                                "Failed",
+                                datetime.now(UTC),
+                                subscription_id,
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+        elif event_type == "customer.subscription.deleted":
+            subscription_id = data_object.get("id")
+            if subscription_id:
+                conn = get_db_connection()
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE signups
+                            SET status = %s,
+                                updated_at = %s
+                            WHERE stripe_subscription_id = %s
+                            """,
+                            (
+                                "Lost",
+                                datetime.now(UTC),
+                                subscription_id,
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+    except Exception as e:
+        print("Stripe webhook handling error:", e)
+        return "Webhook handler error", 500
+
+    return "OK", 200
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -1070,6 +1302,9 @@ def export_csv():
         "Admin Notes",
         "Payment Status",
         "Stripe Checkout URL",
+        "Stripe Checkout Session ID",
+        "Stripe Customer ID",
+        "Stripe Subscription ID",
         "Signed At",
         "Terms Accepted",
         "Privacy Accepted",
@@ -1106,6 +1341,9 @@ def export_csv():
             row.get("admin_notes"),
             row.get("payment_status"),
             row.get("stripe_checkout_url"),
+            row.get("stripe_checkout_session_id"),
+            row.get("stripe_customer_id"),
+            row.get("stripe_subscription_id"),
             row["signed_at"],
             row["terms_accepted"],
             row["privacy_accepted"],
@@ -1140,8 +1378,8 @@ def download_contract(signup_id):
         return "Signup not found", 404
 
     pdf_path = build_contract_pdf(row)
-    safe_name = "".join(c for c in row["full_name"] if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-    filename = f"{safe_name or 'signup'}_agreement_{signup_id}.pdf"
+    safe_name_for_pdf = "".join(c for c in row["full_name"] if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    filename = f"{safe_name_for_pdf or 'signup'}_agreement_{signup_id}.pdf"
 
     @after_this_request
     def cleanup(response):
@@ -1203,6 +1441,7 @@ def admin():
     broken_only = request.args.get("broken_only", "").strip()
     fix_join_only = request.args.get("fix_join_only", "").strip()
     marketing_only = request.args.get("marketing_only", "").strip()
+    payment_status = clean_text(request.args.get("payment_status"), 20)
 
     query = "SELECT * FROM signups WHERE 1=1"
     params = []
@@ -1226,6 +1465,10 @@ def admin():
     if priority in {"HIGH", "NORMAL"}:
         query += " AND priority = %s"
         params.append(priority)
+
+    if payment_status in VALID_PAYMENT_STATUSES:
+        query += " AND payment_status = %s"
+        params.append(payment_status)
 
     if broken_only == "1":
         query += " AND boiler_broken = 'Yes'"
@@ -1253,6 +1496,7 @@ def admin():
             "search": search,
             "status": status,
             "priority": priority,
+            "payment_status": payment_status,
             "broken_only": broken_only,
             "fix_join_only": fix_join_only,
             "marketing_only": marketing_only,
