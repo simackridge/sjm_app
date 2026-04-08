@@ -1,15 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}Privacy{% endblock %}
+{% block title %}{{ company_name }} | Privacy{% endblock %}
 
 {% block content %}
-<section class="card">
+<section class="page-header">
   <h1>Privacy Policy</h1>
-  <p><strong>Version:</strong> {{ privacy_version }}</p>
-  <p>
-    <a class="btn btn-primary" href="{{ url_for('static', filename=privacy_pdf_filename) }}" target="_blank">
-      Open Privacy PDF
-    </a>
-  </p>
+  <p>This page is shown when the PDF version is not available.</p>
 </section>
+
+<div class="card legal-card">
+  <h2>How we use your data</h2>
+  <p>
+    This is a fallback privacy page. Replace with your final privacy wording or upload the PDF into
+    <code>static/docs/sjm_privacy_policy_v1.pdf</code>.
+  </p>
+
+  <h3>What we collect</h3>
+  <p>
+    We may collect your name, email address, phone number, selected plan information, and any details relevant to your boiler or service plan.
+  </p>
+
+  <h3>Why we collect it</h3>
+  <p>
+    We use this information to administer service plans, send payment links, provide customer support, and maintain internal records.
+  </p>
+
+  <h3>Sharing data</h3>
+  <p>
+    We only share data where needed for service delivery, payment processing, legal compliance, or operational support.
+  </p>
+
+  <h3>Your rights</h3>
+  <p>
+    You may request access to your data, correction of inaccurate information, or deletion where legally appropriate.
+  </p>
+</div>
 {% endblock %}

@@ -6,21 +6,11 @@ from flask import (
     url_for,
     flash,
     session,
-    Response,
-    send_file,
     send_from_directory,
-    abort,
-    after_this_request,
 )
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, UTC
 import os
-import re
-import secrets
 from functools import wraps
-import csv
-import io
-import base64
-import tempfile
 
 from dotenv import load_dotenv
 import resend
@@ -45,7 +35,16 @@ DOCS_DIR = os.path.join(STATIC_DIR, "docs")
 # CONFIG
 # -----------------------------------------------------------------------------
 
-RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL")
+COMPANY_NAME = os.environ.get("COMPANY_NAME", "SJM Heating")
+COMPANY_REG = os.environ.get("COMPANY_REG", "")
+COMPANY_PHONE = os.environ.get("COMPANY_PHONE", "")
+COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "")
+COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
+FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
+
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
 resend.api_key = os.environ.get("RESEND_API_KEY")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
@@ -56,7 +55,6 @@ STRIPE_PRICES = {
     "Complete": os.environ.get("STRIPE_PRICE_COMPLETE"),
 }
 
-# These should be full URLs in Render env vars
 STRIPE_SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL")
 STRIPE_CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL")
 
@@ -72,11 +70,23 @@ PLAN_PRICES = {
     "Complete": "23.99",
 }
 
-VALID_STATUSES = {"New", "Contacted", "Won", "Lost"}
-VALID_PAYMENT_STATUSES = {"Not sent", "Link sent", "Paid", "Failed"}
-
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
+
+# -----------------------------------------------------------------------------
+# TEMPLATE GLOBALS
+# -----------------------------------------------------------------------------
+
+@app.context_processor
+def inject_company_details():
+    return {
+        "company_name": COMPANY_NAME,
+        "company_reg": COMPANY_REG,
+        "company_phone": COMPANY_PHONE,
+        "company_email": COMPANY_EMAIL,
+        "company_website": COMPANY_WEBSITE,
+        "favicon_path": FAVICON_PATH,
+    }
 
 # -----------------------------------------------------------------------------
 # DB
@@ -107,15 +117,10 @@ def login_required(func):
         return func(*args, **kwargs)
     return wrapper
 
-def file_exists_in_docs(filename):
-    return os.path.exists(os.path.join(DOCS_DIR, filename))
+def safe_success_url():
+    return STRIPE_SUCCESS_URL or (url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}")
 
-def safe_stripe_success_url():
-    # Stripe requires a full URL.
-    # If env var is missing, fall back safely to local route.
-    return STRIPE_SUCCESS_URL or url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}"
-
-def safe_stripe_cancel_url():
+def safe_cancel_url():
     return STRIPE_CANCEL_URL or url_for("stripe_cancel", _external=True)
 
 def validate_required_env():
@@ -135,6 +140,9 @@ def validate_required_env():
             missing.append(key)
 
     return missing
+
+def docs_file_exists(filename):
+    return os.path.exists(os.path.join(DOCS_DIR, filename))
 
 # -----------------------------------------------------------------------------
 # ROUTES
@@ -169,15 +177,13 @@ def success():
 
 @app.route("/terms")
 def terms():
-    pdf_path = os.path.join(DOCS_DIR, TERMS_PDF_FILENAME)
-    if os.path.exists(pdf_path):
+    if docs_file_exists(TERMS_PDF_FILENAME):
         return send_from_directory(DOCS_DIR, TERMS_PDF_FILENAME)
     return render_template("terms.html")
 
 @app.route("/privacy")
 def privacy():
-    pdf_path = os.path.join(DOCS_DIR, PRIVACY_PDF_FILENAME)
-    if os.path.exists(pdf_path):
+    if docs_file_exists(PRIVACY_PDF_FILENAME):
         return send_from_directory(DOCS_DIR, PRIVACY_PDF_FILENAME)
     return render_template("privacy.html")
 
@@ -186,7 +192,7 @@ def health():
     return {"status": "ok"}, 200
 
 # -----------------------------------------------------------------------------
-# SIGNUP → STRIPE
+# SIGNUP -> STRIPE
 # -----------------------------------------------------------------------------
 
 @app.route("/submit", methods=["POST"])
@@ -206,7 +212,6 @@ def submit():
     warranty = clean(request.form.get("boiler_warranty_valid"))
     fix_join = clean(request.form.get("fix_and_join"))
 
-    # Basic validation
     if not name or not email or not plan:
         flash("Please complete the required fields.", "error")
         return redirect(url_for("signup"))
@@ -215,21 +220,19 @@ def submit():
         flash("Invalid plan selected.", "error")
         return redirect(url_for("signup"))
 
-    if plan not in STRIPE_PRICES or not STRIPE_PRICES.get(plan):
+    if not STRIPE_PRICES.get(plan):
         flash(f"Stripe price is not configured for {plan}.", "error")
         return redirect(url_for("signup"))
 
-    # RULE: Essential validation
     if plan == "Essential":
         if broken == "Yes":
-            flash("Essential not allowed for broken boilers.", "error")
+            flash("Essential is not allowed for broken boilers.", "error")
             return redirect(url_for("signup"))
 
         if not (under3 == "Yes" or warranty == "Yes"):
-            flash("Essential requires boiler under 3 years or a valid warranty.", "error")
+            flash("Essential requires the boiler to be under 3 years old or under warranty.", "error")
             return redirect(url_for("signup"))
 
-    # Force Fix & Join if broken
     if broken == "Yes":
         fix_join = "Yes"
 
@@ -265,13 +268,12 @@ def submit():
                 ),
             )
             signup_id = cur.fetchone()["id"]
-
         conn.commit()
     finally:
         conn.close()
 
     try:
-        session_checkout = stripe.checkout.Session.create(
+        checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
             line_items=[
@@ -280,12 +282,11 @@ def submit():
                     "quantity": 1,
                 }
             ],
-            success_url=safe_stripe_success_url(),
-            cancel_url=safe_stripe_cancel_url(),
+            success_url=safe_success_url(),
+            cancel_url=safe_cancel_url(),
             metadata={"signup_id": str(signup_id)},
         )
     except Exception as e:
-        # Roll back status if Stripe fails after DB insert
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
@@ -301,7 +302,7 @@ def submit():
         finally:
             conn.close()
 
-        flash(f"Unable to create Stripe checkout: {str(e)}", "error")
+        flash(f"Unable to create Stripe checkout: {e}", "error")
         return redirect(url_for("signup"))
 
     conn = get_db_connection()
@@ -313,16 +314,16 @@ def submit():
                 SET stripe_checkout_url=%s, payment_status='Link sent'
                 WHERE id=%s
                 """,
-                (session_checkout.url, signup_id),
+                (checkout_session.url, signup_id),
             )
         conn.commit()
     finally:
         conn.close()
 
-    return redirect(session_checkout.url)
+    return redirect(checkout_session.url)
 
 # -----------------------------------------------------------------------------
-# STRIPE SUCCESS
+# STRIPE SUCCESS / CANCEL
 # -----------------------------------------------------------------------------
 
 @app.route("/stripe/success")
@@ -336,7 +337,7 @@ def stripe_success():
         checkout = stripe.checkout.Session.retrieve(session_id)
         signup_id = checkout.metadata.get("signup_id")
     except Exception as e:
-        flash(f"Could not verify payment session: {str(e)}", "error")
+        flash(f"Could not verify payment session: {e}", "error")
         return render_template("stripe_success.html")
 
     if signup_id:
@@ -362,17 +363,18 @@ def stripe_cancel():
     return render_template("stripe_cancel.html")
 
 # -----------------------------------------------------------------------------
-# ADMIN LOGIN
+# ADMIN LOGIN / LOGOUT
 # -----------------------------------------------------------------------------
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
-        if request.form.get("password") == os.environ.get("ADMIN_PASSWORD"):
+        if request.form.get("password") == ADMIN_PASSWORD:
             session["admin"] = True
             flash("Logged in successfully.", "success")
             return redirect(url_for("admin"))
         flash("Wrong password", "error")
+
     return render_template("admin_login.html")
 
 @app.route("/admin/logout")
@@ -382,7 +384,7 @@ def admin_logout():
     return redirect(url_for("admin_login"))
 
 # -----------------------------------------------------------------------------
-# ADMIN DASHBOARD (WITH STATS)
+# ADMIN DASHBOARD
 # -----------------------------------------------------------------------------
 
 @app.route("/admin")
@@ -399,7 +401,6 @@ def admin():
 
             cur.execute("SELECT COUNT(*) FROM signups WHERE payment_status='Paid'")
             paid = cur.fetchone()["count"]
-
     finally:
         conn.close()
 
@@ -412,7 +413,7 @@ def admin():
     return render_template("admin.html", signups=rows, stats=stats)
 
 # -----------------------------------------------------------------------------
-# RESEND PAYMENT
+# RESEND PAYMENT LINK
 # -----------------------------------------------------------------------------
 
 @app.route("/admin/resend/<int:id>", methods=["POST"])
@@ -433,23 +434,23 @@ def resend_payment(id):
             flash("Signup not found.", "error")
             return redirect(url_for("admin"))
 
-        selected_plan = row["selected_plan"]
+        plan = row["selected_plan"]
 
-        if selected_plan not in STRIPE_PRICES or not STRIPE_PRICES.get(selected_plan):
-            flash(f"Stripe price is not configured for {selected_plan}.", "error")
+        if not STRIPE_PRICES.get(plan):
+            flash(f"Stripe price is not configured for {plan}.", "error")
             return redirect(url_for("admin"))
 
-        session_checkout = stripe.checkout.Session.create(
+        checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
             line_items=[
                 {
-                    "price": STRIPE_PRICES[selected_plan],
+                    "price": STRIPE_PRICES[plan],
                     "quantity": 1,
                 }
             ],
-            success_url=safe_stripe_success_url(),
-            cancel_url=safe_stripe_cancel_url(),
+            success_url=safe_success_url(),
+            cancel_url=safe_cancel_url(),
             metadata={"signup_id": str(id)},
         )
 
@@ -460,17 +461,17 @@ def resend_payment(id):
                 SET stripe_checkout_url=%s, payment_status='Link sent'
                 WHERE id=%s
                 """,
-                (session_checkout.url, id),
+                (checkout_session.url, id),
             )
         conn.commit()
     finally:
         conn.close()
 
-    flash("Payment link resent", "success")
+    flash("Payment link resent.", "success")
     return redirect(url_for("admin"))
 
 # -----------------------------------------------------------------------------
-# ERROR HANDLERS
+# ERROR PAGES
 # -----------------------------------------------------------------------------
 
 @app.errorhandler(404)

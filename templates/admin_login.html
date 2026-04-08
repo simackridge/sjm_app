@@ -1,22 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Admin login{% endblock %}
+{% block title %}{{ company_name }} | Admin Login{% endblock %}
 
 {% block content %}
-<section class="card narrow-card">
-  <h1>Admin login</h1>
+<section class="center-wrap">
+  <div class="card login-card">
+    <h1>Admin login</h1>
+    <p>Enter your admin password to access the dashboard.</p>
 
-  <form method="post" action="{{ url_for('admin_login') }}" class="form-grid one-col">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <form method="POST" action="{{ url_for('admin_login') }}" class="stack-form">
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+      </div>
 
-    <div>
-      <label>Password</label>
-      <input type="password" name="password" required>
-    </div>
-
-    <div>
-      <button type="submit" class="btn btn-primary">Log in</button>
-    </div>
-  </form>
+      <button type="submit" class="btn btn-primary btn-wide">Log in</button>
+    </form>
+  </div>
 </section>
 {% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Page Not Found{% endblock %}
+
+{% block content %}
+<section class="center-wrap">
+  <div class="card error-card">
+    <h1>Page not found</h1>
+    <p>The page you were looking for doesn’t exist or may have moved.</p>
+
+    <div class="hero-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-primary">Go home</a>
+      <a href="{{ url_for('signup') }}" class="btn btn-secondary">Go to signup</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

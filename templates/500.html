@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Error{% endblock %}
+
+{% block content %}
+<section class="center-wrap">
+  <div class="card error-card">
+    <h1>Something went wrong</h1>
+    <p>We hit an unexpected error while loading this page.</p>
+    <p>Please try again shortly.</p>
+
+    <div class="hero-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-primary">Go home</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

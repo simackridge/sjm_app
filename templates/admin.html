@@ -1,298 +1,90 @@
 {% extends "base.html" %}
 
-{% block title %}Admin | {{ company_name }}{% endblock %}
+{% block title %}{{ company_name }} | Admin{% endblock %}
 
 {% block content %}
-<section class="card">
-  <div class="admin-page-header">
-    <div>
-      <h1>Admin dashboard</h1>
-      <p class="lead">Track sign-ups, payments, conversions, and follow-up actions in one place.</p>
-    </div>
-
-    <div class="admin-toolbar">
-      <a class="btn btn-primary" href="{{ url_for('export_csv') }}">Export CSV</a>
-
-      <form method="post" action="{{ url_for('admin_logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="btn btn-secondary" type="submit">Logout</button>
-      </form>
-    </div>
+<section class="dashboard-head">
+  <div>
+    <h1>Admin dashboard</h1>
+    <p>View signups, track payment status, and resend links.</p>
   </div>
 
-  <div class="stats-grid stats-grid-top">
-    <div class="stats-card">
-      <span class="stats-label">Total sign-ups</span>
-      <span class="stats-value">{{ stats.total_signups }}</span>
-    </div>
+  <div class="dashboard-actions">
+    <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">Log out</a>
+  </div>
+</section>
 
-    <div class="stats-card">
-      <span class="stats-label">Paid</span>
-      <span class="stats-value">{{ stats.total_paid }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Open / unpaid</span>
-      <span class="stats-value">{{ stats.total_unpaid }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Failed payments</span>
-      <span class="stats-value">{{ stats.total_failed }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Conversion rate</span>
-      <span class="stats-value">{{ stats.conversion_rate }}%</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Monthly live revenue</span>
-      <span class="stats-value">£{{ "%.2f"|format(stats.monthly_revenue|float) }}</span>
-    </div>
+<section class="stats-grid">
+  <div class="card stat-card">
+    <span class="stat-label">Total signups</span>
+    <strong class="stat-value">{{ stats.total }}</strong>
   </div>
 
-  <div class="stats-grid stats-grid-secondary">
-    <div class="stats-card">
-      <span class="stats-label">Today</span>
-      <span class="stats-value">{{ stats.signups_today }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">This week</span>
-      <span class="stats-value">{{ stats.signups_this_week }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">This month</span>
-      <span class="stats-value">{{ stats.signups_this_month }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">High priority</span>
-      <span class="stats-value">{{ stats.total_high_priority }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Broken boilers</span>
-      <span class="stats-value">{{ stats.total_broken }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Fix & Join</span>
-      <span class="stats-value">{{ stats.total_fix_join }}</span>
-    </div>
+  <div class="card stat-card">
+    <span class="stat-label">Paid</span>
+    <strong class="stat-value">{{ stats.paid }}</strong>
   </div>
 
-  <div class="stats-grid stats-grid-plans">
-    <div class="stats-card">
-      <span class="stats-label">Essential plans</span>
-      <span class="stats-value">{{ stats.total_essential }}</span>
-    </div>
+  <div class="card stat-card">
+    <span class="stat-label">Conversion</span>
+    <strong class="stat-value">{{ stats.conversion }}%</strong>
+  </div>
+</section>
 
-    <div class="stats-card">
-      <span class="stats-label">Standard plans</span>
-      <span class="stats-value">{{ stats.total_standard }}</span>
-    </div>
-
-    <div class="stats-card">
-      <span class="stats-label">Complete plans</span>
-      <span class="stats-value">{{ stats.total_complete }}</span>
-    </div>
+<section class="card table-card">
+  <div class="table-header">
+    <h2>Signups</h2>
   </div>
 
-  <form method="get" class="admin-filters admin-filters-wide">
-    <input
-      type="text"
-      name="search"
-      placeholder="Search by name, email, phone, postcode"
-      value="{{ filters.search }}"
-    >
-
-    <select name="status">
-      <option value="">All statuses</option>
-      {% for s in valid_statuses %}
-        <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-
-    <select name="priority">
-      <option value="">All priorities</option>
-      <option value="HIGH" {% if filters.priority == "HIGH" %}selected{% endif %}>High</option>
-      <option value="NORMAL" {% if filters.priority == "NORMAL" %}selected{% endif %}>Normal</option>
-    </select>
-
-    <select name="payment_status">
-      <option value="">All payment statuses</option>
-      {% for ps in valid_payment_statuses %}
-        <option value="{{ ps }}" {% if filters.payment_status == ps %}selected{% endif %}>{{ ps }}</option>
-      {% endfor %}
-    </select>
-
-    <select name="broken_only">
-      <option value="">All boilers</option>
-      <option value="1" {% if filters.broken_only == "1" %}selected{% endif %}>Broken only</option>
-    </select>
-
-    <select name="fix_join_only">
-      <option value="">All Fix & Join</option>
-      <option value="1" {% if filters.fix_join_only == "1" %}selected{% endif %}>Fix & Join only</option>
-    </select>
-
-    <select name="marketing_only">
-      <option value="">All marketing</option>
-      <option value="1" {% if filters.marketing_only == "1" %}selected{% endif %}>Opted in</option>
-    </select>
-
-    <div class="admin-filter-actions">
-      <button class="btn btn-primary" type="submit">Apply filters</button>
-      <a class="btn btn-secondary" href="{{ url_for('admin') }}">Reset</a>
+  {% if signups %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Created</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Plan</th>
+            <th>Broken</th>
+            <th>Fix &amp; Join</th>
+            <th>Payment</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in signups %}
+            <tr>
+              <td>#{{ row.id }}</td>
+              <td>{{ row.created_at }}</td>
+              <td>{{ row.full_name }}</td>
+              <td>{{ row.email }}</td>
+              <td>{{ row.phone or "-" }}</td>
+              <td>{{ row.selected_plan }}</td>
+              <td>{{ row.boiler_broken or "-" }}</td>
+              <td>{{ row.fix_and_join or "-" }}</td>
+              <td>
+                <span class="pill
+                  {% if row.payment_status == 'Paid' %}pill-success
+                  {% elif row.payment_status == 'Link sent' %}pill-warning
+                  {% elif row.payment_status == 'Failed' %}pill-danger
+                  {% else %}pill-muted{% endif %}">
+                  {{ row.payment_status or "Not sent" }}
+                </span>
+              </td>
+              <td>
+                <form method="POST" action="{{ url_for('resend_payment', id=row.id) }}">
+                  <button type="submit" class="btn btn-small btn-secondary">Resend link</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-  </form>
-
-  <div class="admin-list">
-    {% for row in signups %}
-    <article class="admin-item">
-      <div class="admin-item-top">
-        <div>
-          <div class="admin-item-title-row">
-            <h3>{{ row.full_name }}</h3>
-            <span class="admin-ref">#{{ row.id }}</span>
-          </div>
-
-          <div class="admin-meta">
-            <span>{{ row.email }}</span>
-            <span>{{ row.phone }}</span>
-            <span>{{ row.postcode }}</span>
-          </div>
-        </div>
-
-        <div class="admin-badges">
-          {% if row.priority == "HIGH" %}
-            <span class="status-pill status-high">HIGH PRIORITY</span>
-          {% else %}
-            <span class="status-pill status-normal">NORMAL</span>
-          {% endif %}
-
-          {% if row.payment_status == "Paid" %}
-            <span class="status-pill status-paid">PAID</span>
-          {% elif row.payment_status == "Link sent" %}
-            <span class="status-pill status-link">LINK SENT</span>
-          {% elif row.payment_status == "Failed" %}
-            <span class="status-pill status-failed">FAILED</span>
-          {% else %}
-            <span class="status-pill status-normal">NOT SENT</span>
-          {% endif %}
-
-          {% if row.boiler_broken == "Yes" %}
-            <span class="status-pill status-high">BROKEN</span>
-          {% endif %}
-
-          {% if row.fix_and_join == "Yes" %}
-            <span class="status-pill status-link">FIX & JOIN</span>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="admin-summary-grid">
-        <div class="summary-card">
-          <div class="summary-title">Plan</div>
-          <div class="summary-value">{{ row.selected_plan }}</div>
-          <div class="summary-sub">£{{ row.monthly_price }} / month</div>
-        </div>
-
-        <div class="summary-card">
-          <div class="summary-title">Eligibility</div>
-          <div class="summary-sub">Under 3 years: {{ row.boiler_under_3_years or "No" }}</div>
-          <div class="summary-sub">Warranty valid: {{ row.boiler_warranty_valid or "No" }}</div>
-        </div>
-
-        <div class="summary-card">
-          <div class="summary-title">Contact</div>
-          <div class="summary-sub">Preferred time: {{ row.contact_time or "Not set" }}</div>
-          <div class="summary-sub">Existing customer: {{ row.existing_customer or "Not set" }}</div>
-        </div>
-
-        <div class="summary-card">
-          <div class="summary-title">Boiler</div>
-          <div class="summary-sub">Make: {{ row.boiler_make or "Not set" }}</div>
-          <div class="summary-sub">Model: {{ row.boiler_model or "Not set" }}</div>
-          <div class="summary-sub">Age: {{ row.boiler_age or "Not set" }}</div>
-        </div>
-      </div>
-
-      <div class="admin-actions-grid">
-        <div class="admin-actions-panel">
-          <h4>Update</h4>
-          <form method="post" action="{{ url_for('admin_update_signup', signup_id=row.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-            <label>Status</label>
-            <select name="status">
-              {% for s in valid_statuses %}
-                <option value="{{ s }}" {% if row.status == s %}selected{% endif %}>{{ s }}</option>
-              {% endfor %}
-            </select>
-
-            <label>Payment status</label>
-            <select name="payment_status">
-              {% for ps in valid_payment_statuses %}
-                <option value="{{ ps }}" {% if row.payment_status == ps %}selected{% endif %}>{{ ps }}</option>
-              {% endfor %}
-            </select>
-
-            <label>Admin notes</label>
-            <textarea name="admin_notes" placeholder="Add follow-up notes, call outcomes, or reminders...">{{ row.admin_notes }}</textarea>
-
-            <div class="panel-actions">
-              <button class="btn btn-primary" type="submit">Save updates</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="admin-actions-panel">
-          <h4>Quick actions</h4>
-
-          <div class="quick-actions">
-            <a class="btn btn-secondary" href="{{ url_for('download_contract', signup_id=row.id) }}">Download PDF</a>
-
-            <a class="btn btn-secondary" href="tel:{{ row.phone }}">Call customer</a>
-
-            <a class="btn btn-secondary" href="mailto:{{ row.email }}">Email customer</a>
-
-            {% if row.payment_status != "Paid" %}
-            <form method="post" action="{{ url_for('admin_resend_payment', signup_id=row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-secondary" type="submit">Resend payment</button>
-            </form>
-            {% endif %}
-
-            {% if row.stripe_checkout_url and row.payment_status != "Paid" %}
-              <a class="btn btn-secondary" href="{{ row.stripe_checkout_url }}" target="_blank">Open payment link</a>
-            {% endif %}
-          </div>
-
-          <div class="admin-extra-info">
-            <div><strong>Created:</strong> {{ row.created_at }}</div>
-            <div><strong>Updated:</strong> {{ row.updated_at or row.created_at }}</div>
-            {% if row.signed_at %}
-              <div><strong>Signed:</strong> {{ row.signed_at }}</div>
-            {% endif %}
-            {% if row.stripe_customer_id %}
-              <div><strong>Stripe customer:</strong> {{ row.stripe_customer_id }}</div>
-            {% endif %}
-            {% if row.stripe_subscription_id %}
-              <div><strong>Stripe subscription:</strong> {{ row.stripe_subscription_id }}</div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </article>
-    {% else %}
-    <div class="card soft-card">
-      No signups found.
-    </div>
-    {% endfor %}
-  </div>
+  {% else %}
+    <p>No signups yet.</p>
+  {% endif %}
 </section>
 {% endblock %}

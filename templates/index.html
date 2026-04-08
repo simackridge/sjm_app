@@ -1,169 +1,73 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Heating service plans{% endblock %}
+{% block title %}{{ company_name }} | Home{% endblock %}
 
 {% block content %}
-<section class="card">
-  <div class="success-grid">
-    <div>
-      <span class="success-badge">✔ Monthly heating cover</span>
-      <h1>Protect your boiler with a simple monthly service plan</h1>
+<section class="hero">
+  <div class="card hero-card">
+    <div class="hero-copy">
+      <span class="eyebrow">Trusted heating cover</span>
+      <h1>Simple monthly service plans from {{ company_name }}</h1>
       <p class="lead">
-        Choose the plan that suits your home, complete your sign-up online, and continue to secure payment to activate your subscription.
+        Straightforward cover, reliable service, and a premium customer experience for homeowners who want peace of mind.
       </p>
 
-      <div class="next-steps">
-        <div class="next-step">
-          <div class="next-step-number">1</div>
-          <div>
-            <strong>Choose your plan</strong>
-            <div class="muted small-note">
-              Essential, Standard, or Complete depending on your boiler and level of cover needed.
-            </div>
-          </div>
-        </div>
-
-        <div class="next-step">
-          <div class="next-step-number">2</div>
-          <div>
-            <strong>Sign online</strong>
-            <div class="muted small-note">
-              Complete the sign-up form, add your digital signature, and send everything over in a few minutes.
-            </div>
-          </div>
-        </div>
-
-        <div class="next-step">
-          <div class="next-step-number">3</div>
-          <div>
-            <strong>Secure payment</strong>
-            <div class="muted small-note">
-              You’ll be redirected to secure Stripe payment to activate your monthly subscription.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="submit-row" style="margin-top:20px;">
-        <a class="btn btn-primary" href="{{ url_for('signup') }}">Start sign-up</a>
-        <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call us</a>
-        <a class="btn btn-secondary" href="https://wa.me/{{ whatsapp_number }}" target="_blank">WhatsApp us</a>
+      <div class="hero-actions">
+        <a href="{{ url_for('signup') }}" class="btn btn-primary">Join a plan</a>
+        <a href="{{ url_for('terms') }}" target="_blank" class="btn btn-secondary">View terms</a>
       </div>
     </div>
 
-    <div class="card soft-card">
-      <h2>Why choose {{ company_name }}?</h2>
-
-      <div class="info-list">
-        <div class="info-row">
-          <div class="info-label">Trusted local team</div>
-          <div class="info-value">Experienced engineers</div>
+    <div class="hero-panel">
+      <h2>Available plans</h2>
+      <div class="plan-list">
+        <div class="plan-item">
+          <div>
+            <strong>Essential</strong>
+            <p>For qualifying boilers under 3 years old or under valid warranty.</p>
+          </div>
+          <span>£11.00/mo</span>
         </div>
 
-        <div class="info-row">
-          <div class="info-label">Simple monthly plans</div>
-          <div class="info-value">Clear pricing</div>
+        <div class="plan-item">
+          <div>
+            <strong>Standard</strong>
+            <p>Solid everyday cover for most households.</p>
+          </div>
+          <span>£17.99/mo</span>
         </div>
 
-        <div class="info-row">
-          <div class="info-label">Fast breakdown response</div>
-          <div class="info-value">Priority support</div>
-        </div>
-
-        <div class="info-row">
-          <div class="info-label">Secure checkout</div>
-          <div class="info-value">Stripe payment</div>
+        <div class="plan-item">
+          <div>
+            <strong>Complete</strong>
+            <p>Our most comprehensive ongoing service option.</p>
+          </div>
+          <span>£23.99/mo</span>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="card" style="margin-top:20px;">
-  <div class="full">
-    <h2>Our service plans</h2>
-    <p class="lead">
-      Pick the level of cover that fits your boiler and your home.
-    </p>
+<section class="info-grid">
+  <div class="card">
+    <h2>Why choose us?</h2>
+    <ul class="feature-list">
+      <li>Professional, trusted heating engineers</li>
+      <li>Clear monthly pricing</li>
+      <li>Easy sign-up process</li>
+      <li>Admin support and payment link tracking</li>
+    </ul>
   </div>
 
-  <div class="plan-grid">
-    <div class="plan-card">
-      <span class="plan-name">Essential</span>
-      <span class="plan-price">£11.00 / month</span>
-      <span class="muted small-note">
-        Available for boilers that are not broken and are either under 3 years old or under a valid warranty.
-      </span>
-    </div>
-
-    <div class="plan-card">
-      <span class="plan-name">Standard</span>
-      <span class="plan-price">£17.99 / month</span>
-      <span class="muted small-note">
-        Solid everyday cover for homeowners wanting dependable monthly protection.
-      </span>
-    </div>
-
-    <div class="plan-card">
-      <span class="plan-name">Complete</span>
-      <span class="plan-price">£23.99 / month</span>
-      <span class="muted small-note">
-        Our highest level of cover for homeowners who want broader protection and peace of mind.
-      </span>
-    </div>
-  </div>
-</section>
-
-<section class="card" style="margin-top:20px;">
-  <div class="success-grid">
-    <div class="card soft-card">
-      <h2>Important information</h2>
-
-      <div class="next-steps">
-        <div class="next-step">
-          <div class="next-step-number">!</div>
-          <div>
-            <strong>Essential eligibility</strong>
-            <div class="muted small-note">
-              Essential cannot be selected if the boiler is currently broken.
-            </div>
-          </div>
-        </div>
-
-        <div class="next-step">
-          <div class="next-step-number">!</div>
-          <div>
-            <strong>Fix & Join</strong>
-            <div class="muted small-note">
-              Broken boiler and Fix & Join cases remain subject to inspection and eligibility.
-            </div>
-          </div>
-        </div>
-
-        <div class="next-step">
-          <div class="next-step-number">!</div>
-          <div>
-            <strong>Secure sign-up</strong>
-            <div class="muted small-note">
-              Payment is taken online at sign-up through secure Stripe checkout.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card soft-card">
-      <h2>Need help choosing?</h2>
-      <p class="lead" style="margin-bottom:14px;">
-        Not sure which plan is right for you? Speak to our team and we’ll point you in the right direction.
-      </p>
-
-      <div class="submit-row">
-        <a class="btn btn-primary" href="{{ url_for('signup') }}">Compare by signing up</a>
-        <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call {{ company_phone }}</a>
-        <a class="btn btn-secondary" href="https://wa.me/{{ whatsapp_number }}" target="_blank">WhatsApp us</a>
-      </div>
-    </div>
+  <div class="card">
+    <h2>What happens next?</h2>
+    <ol class="step-list">
+      <li>Complete the signup form</li>
+      <li>We validate the correct plan</li>
+      <li>You’re taken to secure payment</li>
+      <li>Your signup is logged in our system</li>
+    </ol>
   </div>
 </section>
 {% endblock %}
