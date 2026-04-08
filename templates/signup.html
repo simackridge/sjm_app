@@ -4,8 +4,8 @@
 
 {% block content %}
 <section class="page-header">
-  <h1>Join an SJM Service Plan</h1>
-  <p>Complete the form below and continue to secure payment.</p>
+  <h1>Join {{ company_name }} Service Plans</h1>
+  <p>Simple monthly cover with a premium service experience.</p>
 </section>
 
 <div class="card form-card">
@@ -26,12 +26,12 @@
     </div>
 
     <div class="field">
-      <label for="selected_plan">Selected plan *</label>
+      <label for="selected_plan">Choose your plan *</label>
       <select id="selected_plan" name="selected_plan" required>
         <option value="">Please choose</option>
-        {% for plan, price in plan_prices.items() %}
-          <option value="{{ plan }}">{{ plan }} - £{{ price }}/month</option>
-        {% endfor %}
+        <option value="Essential">Essential - £11.00/month</option>
+        <option value="Standard">Standard - £17.99/month</option>
+        <option value="Complete">Complete - £23.99/month</option>
       </select>
     </div>
 
@@ -45,7 +45,7 @@
     </div>
 
     <div class="field">
-      <label for="boiler_under_3_years">Is the boiler under 3 years old?</label>
+      <label for="boiler_under_3_years">Is your boiler under 3 years old?</label>
       <select id="boiler_under_3_years" name="boiler_under_3_years">
         <option value="">Please choose</option>
         <option value="No">No</option>
@@ -54,7 +54,7 @@
     </div>
 
     <div class="field">
-      <label for="boiler_warranty_valid">Is the warranty still valid?</label>
+      <label for="boiler_warranty_valid">Is the boiler still under warranty?</label>
       <select id="boiler_warranty_valid" name="boiler_warranty_valid">
         <option value="">Please choose</option>
         <option value="No">No</option>
@@ -63,7 +63,7 @@
     </div>
 
     <div class="field">
-      <label for="fix_and_join">Fix &amp; Join required?</label>
+      <label for="fix_and_join">Fix &amp; Join</label>
       <select id="fix_and_join" name="fix_and_join">
         <option value="">Please choose</option>
         <option value="No">No</option>
@@ -73,13 +73,14 @@
 
     <div class="field full">
       <div class="note-box">
-        <strong>Please note:</strong>
+        <strong>Please note:</strong><br>
         Essential is only available where the boiler is not broken and is either under 3 years old or still under warranty.
+        If the boiler is already broken, Fix &amp; Join may apply.
       </div>
     </div>
 
     <div class="field full">
-      <button type="submit" class="btn btn-primary btn-wide">Continue to payment</button>
+      <button type="submit" class="btn btn-primary btn-wide">Continue</button>
     </div>
   </form>
 </div>
