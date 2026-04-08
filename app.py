@@ -8,6 +8,7 @@ from flask import (
     session,
     Response,
     send_file,
+    send_from_directory,
     abort,
     after_this_request,
 )
@@ -36,6 +37,10 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this")
 
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+DOCS_DIR = os.path.join(STATIC_DIR, "docs")
+
 # -----------------------------------------------------------------------------
 # CONFIG
 # -----------------------------------------------------------------------------
@@ -51,6 +56,7 @@ STRIPE_PRICES = {
     "Complete": os.environ.get("STRIPE_PRICE_COMPLETE"),
 }
 
+# These should be full URLs in Render env vars
 STRIPE_SUCCESS_URL = os.environ.get("STRIPE_SUCCESS_URL")
 STRIPE_CANCEL_URL = os.environ.get("STRIPE_CANCEL_URL")
 
@@ -68,6 +74,9 @@ PLAN_PRICES = {
 
 VALID_STATUSES = {"New", "Contacted", "Won", "Lost"}
 VALID_PAYMENT_STATUSES = {"Not sent", "Link sent", "Paid", "Failed"}
+
+TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
+PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
 
 # -----------------------------------------------------------------------------
 # DB
@@ -98,6 +107,35 @@ def login_required(func):
         return func(*args, **kwargs)
     return wrapper
 
+def file_exists_in_docs(filename):
+    return os.path.exists(os.path.join(DOCS_DIR, filename))
+
+def safe_stripe_success_url():
+    # Stripe requires a full URL.
+    # If env var is missing, fall back safely to local route.
+    return STRIPE_SUCCESS_URL or url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}"
+
+def safe_stripe_cancel_url():
+    return STRIPE_CANCEL_URL or url_for("stripe_cancel", _external=True)
+
+def validate_required_env():
+    missing = []
+
+    required = {
+        "DB_NAME": DB_NAME,
+        "DB_USER": DB_USER,
+        "DB_PASSWORD": DB_PASSWORD,
+        "DB_HOST": DB_HOST,
+        "DB_PORT": DB_PORT,
+        "STRIPE_SECRET_KEY": os.environ.get("STRIPE_SECRET_KEY"),
+    }
+
+    for key, value in required.items():
+        if not value:
+            missing.append(key)
+
+    return missing
+
 # -----------------------------------------------------------------------------
 # ROUTES
 # -----------------------------------------------------------------------------
@@ -106,9 +144,46 @@ def login_required(func):
 def index():
     return render_template("index.html")
 
-@app.route("/signup")
+@app.route("/signup", methods=["GET"])
 def signup():
-    return render_template("signup.html")
+    return render_template("signup.html", plan_prices=PLAN_PRICES)
+
+@app.route("/success")
+def success():
+    signup_id = request.args.get("signup_id")
+    signup_row = None
+
+    if signup_id:
+        try:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT * FROM signups WHERE id=%s", (signup_id,))
+                    signup_row = cur.fetchone()
+            finally:
+                conn.close()
+        except Exception:
+            signup_row = None
+
+    return render_template("success.html", signup=signup_row)
+
+@app.route("/terms")
+def terms():
+    pdf_path = os.path.join(DOCS_DIR, TERMS_PDF_FILENAME)
+    if os.path.exists(pdf_path):
+        return send_from_directory(DOCS_DIR, TERMS_PDF_FILENAME)
+    return render_template("terms.html")
+
+@app.route("/privacy")
+def privacy():
+    pdf_path = os.path.join(DOCS_DIR, PRIVACY_PDF_FILENAME)
+    if os.path.exists(pdf_path):
+        return send_from_directory(DOCS_DIR, PRIVACY_PDF_FILENAME)
+    return render_template("privacy.html")
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
 
 # -----------------------------------------------------------------------------
 # SIGNUP → STRIPE
@@ -116,6 +191,11 @@ def signup():
 
 @app.route("/submit", methods=["POST"])
 def submit():
+    missing_env = validate_required_env()
+    if missing_env:
+        flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
+        return redirect(url_for("signup"))
+
     name = clean(request.form.get("full_name"))
     email = clean(request.form.get("email"))
     phone = clean(request.form.get("phone"))
@@ -126,14 +206,27 @@ def submit():
     warranty = clean(request.form.get("boiler_warranty_valid"))
     fix_join = clean(request.form.get("fix_and_join"))
 
+    # Basic validation
+    if not name or not email or not plan:
+        flash("Please complete the required fields.", "error")
+        return redirect(url_for("signup"))
+
+    if plan not in PLAN_PRICES:
+        flash("Invalid plan selected.", "error")
+        return redirect(url_for("signup"))
+
+    if plan not in STRIPE_PRICES or not STRIPE_PRICES.get(plan):
+        flash(f"Stripe price is not configured for {plan}.", "error")
+        return redirect(url_for("signup"))
+
     # RULE: Essential validation
     if plan == "Essential":
         if broken == "Yes":
-            flash("Essential not allowed for broken boilers", "error")
+            flash("Essential not allowed for broken boilers.", "error")
             return redirect(url_for("signup"))
 
         if not (under3 == "Yes" or warranty == "Yes"):
-            flash("Essential requires boiler under 3 years or warranty", "error")
+            flash("Essential requires boiler under 3 years or a valid warranty.", "error")
             return redirect(url_for("signup"))
 
     # Force Fix & Join if broken
@@ -143,54 +236,85 @@ def submit():
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO signups (
-                    full_name, email, phone,
-                    selected_plan, monthly_price,
-                    boiler_broken, fix_and_join,
-                    payment_status, created_at
+                    full_name,
+                    email,
+                    phone,
+                    selected_plan,
+                    monthly_price,
+                    boiler_broken,
+                    fix_and_join,
+                    payment_status,
+                    created_at
                 )
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
-            """, (
-                name,
-                email,
-                phone,
-                plan,
-                PLAN_PRICES[plan],
-                broken,
-                fix_join,
-                "Not sent",
-                datetime.now(UTC)
-            ))
+                """,
+                (
+                    name,
+                    email,
+                    phone,
+                    plan,
+                    PLAN_PRICES[plan],
+                    broken,
+                    fix_join,
+                    "Not sent",
+                    datetime.now(UTC),
+                ),
+            )
             signup_id = cur.fetchone()["id"]
 
         conn.commit()
     finally:
         conn.close()
 
-    # STRIPE
-    session_checkout = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        mode="subscription",
-        line_items=[{
-            "price": STRIPE_PRICES[plan],
-            "quantity": 1
-        }],
-        success_url=STRIPE_SUCCESS_URL,
-        cancel_url=STRIPE_CANCEL_URL,
-        metadata={"signup_id": signup_id}
-    )
+    try:
+        session_checkout = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[
+                {
+                    "price": STRIPE_PRICES[plan],
+                    "quantity": 1,
+                }
+            ],
+            success_url=safe_stripe_success_url(),
+            cancel_url=safe_stripe_cancel_url(),
+            metadata={"signup_id": str(signup_id)},
+        )
+    except Exception as e:
+        # Roll back status if Stripe fails after DB insert
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE signups
+                    SET payment_status='Failed'
+                    WHERE id=%s
+                    """,
+                    (signup_id,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
-    # Save link
+        flash(f"Unable to create Stripe checkout: {str(e)}", "error")
+        return redirect(url_for("signup"))
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE signups
                 SET stripe_checkout_url=%s, payment_status='Link sent'
                 WHERE id=%s
-            """, (session_checkout.url, signup_id))
+                """,
+                (session_checkout.url, signup_id),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -205,26 +329,37 @@ def submit():
 def stripe_success():
     session_id = request.args.get("session_id")
 
-    checkout = stripe.checkout.Session.retrieve(session_id)
-    signup_id = checkout.metadata.get("signup_id")
+    if not session_id:
+        return render_template("stripe_success.html")
 
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE signups
-                SET payment_status='Paid'
-                WHERE id=%s
-            """, (signup_id,))
-        conn.commit()
-    finally:
-        conn.close()
+        checkout = stripe.checkout.Session.retrieve(session_id)
+        signup_id = checkout.metadata.get("signup_id")
+    except Exception as e:
+        flash(f"Could not verify payment session: {str(e)}", "error")
+        return render_template("stripe_success.html")
+
+    if signup_id:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE signups
+                    SET payment_status='Paid'
+                    WHERE id=%s
+                    """,
+                    (signup_id,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
     return render_template("stripe_success.html")
 
 @app.route("/stripe/cancel")
 def stripe_cancel():
-    return "Payment cancelled"
+    return render_template("stripe_cancel.html")
 
 # -----------------------------------------------------------------------------
 # ADMIN LOGIN
@@ -235,9 +370,16 @@ def admin_login():
     if request.method == "POST":
         if request.form.get("password") == os.environ.get("ADMIN_PASSWORD"):
             session["admin"] = True
+            flash("Logged in successfully.", "success")
             return redirect(url_for("admin"))
         flash("Wrong password", "error")
     return render_template("admin_login.html")
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.clear()
+    flash("Logged out successfully.", "success")
+    return redirect(url_for("admin_login"))
 
 # -----------------------------------------------------------------------------
 # ADMIN DASHBOARD (WITH STATS)
@@ -264,7 +406,7 @@ def admin():
     stats = {
         "total": total,
         "paid": paid,
-        "conversion": round((paid/total)*100,1) if total else 0
+        "conversion": round((paid / total) * 100, 1) if total else 0,
     }
 
     return render_template("admin.html", signups=rows, stats=stats)
@@ -276,30 +418,50 @@ def admin():
 @app.route("/admin/resend/<int:id>", methods=["POST"])
 @login_required
 def resend_payment(id):
+    missing_env = validate_required_env()
+    if missing_env:
+        flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
+        return redirect(url_for("admin"))
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM signups WHERE id=%s", (id,))
             row = cur.fetchone()
 
+        if not row:
+            flash("Signup not found.", "error")
+            return redirect(url_for("admin"))
+
+        selected_plan = row["selected_plan"]
+
+        if selected_plan not in STRIPE_PRICES or not STRIPE_PRICES.get(selected_plan):
+            flash(f"Stripe price is not configured for {selected_plan}.", "error")
+            return redirect(url_for("admin"))
+
         session_checkout = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
-            line_items=[{
-                "price": STRIPE_PRICES[row["selected_plan"]],
-                "quantity": 1
-            }],
-            success_url=STRIPE_SUCCESS_URL,
-            cancel_url=STRIPE_CANCEL_URL,
-            metadata={"signup_id": id}
+            line_items=[
+                {
+                    "price": STRIPE_PRICES[selected_plan],
+                    "quantity": 1,
+                }
+            ],
+            success_url=safe_stripe_success_url(),
+            cancel_url=safe_stripe_cancel_url(),
+            metadata={"signup_id": str(id)},
         )
 
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE signups
                 SET stripe_checkout_url=%s, payment_status='Link sent'
                 WHERE id=%s
-            """, (session_checkout.url, id))
+                """,
+                (session_checkout.url, id),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -308,8 +470,21 @@ def resend_payment(id):
     return redirect(url_for("admin"))
 
 # -----------------------------------------------------------------------------
+# ERROR HANDLERS
+# -----------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def page_not_found(error):
+    return render_template("404.html"), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template("500.html"), 500
+
+# -----------------------------------------------------------------------------
 # START
-# ------------------------- ----------------------------------------------------
+# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=True)
