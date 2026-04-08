@@ -4,13 +4,13 @@
 
 {% block content %}
 <section class="card">
-  <h1>Service plan enquiry</h1>
-  <p class="lead">Complete the form below and sign digitally to submit your enquiry.</p>
+  <h1>Service plan sign-up</h1>
+  <p class="lead">Complete the form below, sign digitally, and continue to secure payment.</p>
 
   <div class="trust-bar">
     <div>✔ Fast response for breakdowns</div>
     <div>✔ Trusted local heating engineers</div>
-    <div>✔ No payment taken at this stage</div>
+    <div>✔ Secure payment taken at sign-up</div>
   </div>
 
   <form method="post" action="{{ url_for('submit') }}" class="form-grid" id="signupForm">
@@ -86,7 +86,25 @@
 
     <div>
       <label>Is the boiler currently broken? *</label>
-      <select name="boiler_broken" required>
+      <select name="boiler_broken" id="boiler_broken" required>
+        <option value="">Please choose</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Is the boiler under 3 years old? *</label>
+      <select name="boiler_under_3_years" id="boiler_under_3_years" required>
+        <option value="">Please choose</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Is the boiler under a valid warranty? *</label>
+      <select name="boiler_warranty_valid" id="boiler_warranty_valid" required>
         <option value="">Please choose</option>
         <option value="Yes">Yes</option>
         <option value="No">No</option>
@@ -95,7 +113,7 @@
 
     <div>
       <label>Fix & Join</label>
-      <select name="fix_and_join">
+      <select name="fix_and_join" id="fix_and_join">
         <option value="">Please choose</option>
         <option value="Yes">Yes</option>
         <option value="No">No</option>
@@ -115,27 +133,34 @@
 
     <div class="full">
       <h2>Choose your plan</h2>
-      <p class="muted">Limited availability for new plans each month. Priority is given to broken boilers.</p>
+      <p class="muted">
+        Essential is only available if the boiler is not broken and is either under 3 years old or under a valid warranty.
+      </p>
     </div>
 
     <div class="full plan-grid">
-      <label class="plan-card">
-        <input type="radio" name="selected_plan" value="Essential" required>
+      <label class="plan-card" id="plan-card-essential">
+        <input type="radio" name="selected_plan" value="Essential" id="plan-essential" required>
         <span class="plan-name">Essential</span>
         <span class="plan-price">£11.00 / month</span>
+        <span class="muted small-note" id="essential-help">Available for eligible boilers only</span>
       </label>
 
-      <label class="plan-card">
-        <input type="radio" name="selected_plan" value="Standard" required>
+      <label class="plan-card" id="plan-card-standard">
+        <input type="radio" name="selected_plan" value="Standard" id="plan-standard" required>
         <span class="plan-name">Standard</span>
         <span class="plan-price">£17.99 / month</span>
       </label>
 
-      <label class="plan-card">
-        <input type="radio" name="selected_plan" value="Complete" required>
+      <label class="plan-card" id="plan-card-complete">
+        <input type="radio" name="selected_plan" value="Complete" id="plan-complete" required>
         <span class="plan-name">Complete</span>
         <span class="plan-price">£23.99 / month</span>
       </label>
+    </div>
+
+    <div class="full card soft-card" id="plan-rule-message">
+      <strong>Important:</strong> If your boiler is broken, Essential cannot be selected.
     </div>
 
     <div class="full">
@@ -148,7 +173,9 @@
       <div class="signature-actions">
         <button type="button" class="btn btn-secondary" id="clear-signature">Clear signature</button>
       </div>
-      <p class="muted small-note">Your details are secure. We will review your enquiry before any plan is activated. No payment is taken at this stage.</p>
+      <p class="muted small-note">
+        Your details are secure. You will be taken to secure payment after submitting this form.
+      </p>
     </div>
 
     <div class="full checkbox-row">
@@ -175,11 +202,11 @@
     </div>
 
     <div class="full card soft-card">
-      <strong>Important:</strong> Fix & Join is subject to inspection and eligibility.
+      <strong>Important:</strong> Payment is taken at sign-up. Broken boiler and Fix & Join cases remain subject to inspection and eligibility.
     </div>
 
     <div class="full submit-row">
-      <button type="submit" class="btn btn-primary">Submit enquiry</button>
+      <button type="submit" class="btn btn-primary">Continue to payment</button>
       <a class="btn btn-secondary" href="tel:{{ company_phone }}">Call instead</a>
       <a class="btn btn-secondary" href="https://wa.me/{{ whatsapp_number }}" target="_blank">WhatsApp us</a>
     </div>
@@ -192,6 +219,16 @@
   const clearBtn = document.getElementById("clear-signature");
   const form = document.getElementById("signupForm");
   const ctx = canvas.getContext("2d");
+
+  const boilerBroken = document.getElementById("boiler_broken");
+  const boilerUnder3 = document.getElementById("boiler_under_3_years");
+  const boilerWarranty = document.getElementById("boiler_warranty_valid");
+  const fixAndJoin = document.getElementById("fix_and_join");
+
+  const planEssential = document.getElementById("plan-essential");
+  const planCardEssential = document.getElementById("plan-card-essential");
+  const essentialHelp = document.getElementById("essential-help");
+  const planRuleMessage = document.getElementById("plan-rule-message");
 
   let drawing = false;
   let hasSigned = false;
@@ -250,6 +287,40 @@
     drawing = false;
   }
 
+  function refreshPlanRules() {
+    const broken = boilerBroken.value;
+    const under3 = boilerUnder3.value;
+    const warranty = boilerWarranty.value;
+
+    const essentialAllowed = broken === "No" && (under3 === "Yes" || warranty === "Yes");
+
+    planEssential.disabled = !essentialAllowed;
+
+    if (!essentialAllowed && planEssential.checked) {
+      planEssential.checked = false;
+    }
+
+    if (essentialAllowed) {
+      planCardEssential.classList.remove("plan-disabled");
+      essentialHelp.textContent = "Available";
+      planRuleMessage.innerHTML = "<strong>Important:</strong> Essential is available because the boiler is not broken and meets the age/warranty rule.";
+    } else {
+      planCardEssential.classList.add("plan-disabled");
+
+      if (broken === "Yes") {
+        essentialHelp.textContent = "Unavailable while boiler is broken";
+        planRuleMessage.innerHTML = "<strong>Important:</strong> Your boiler is marked as broken, so Essential cannot be selected.";
+      } else {
+        essentialHelp.textContent = "Requires boiler under 3 years old or valid warranty";
+        planRuleMessage.innerHTML = "<strong>Important:</strong> Essential is only available if the boiler is not broken and is either under 3 years old or under a valid warranty.";
+      }
+    }
+
+    if (broken === "Yes") {
+      fixAndJoin.value = "Yes";
+    }
+  }
+
   canvas.addEventListener("mousedown", startDraw);
   canvas.addEventListener("mousemove", draw);
   window.addEventListener("mouseup", endDraw);
@@ -273,7 +344,15 @@
     hiddenInput.value = canvas.toDataURL("image/png");
   });
 
-  window.addEventListener("load", resizeCanvasForDisplay);
+  boilerBroken.addEventListener("change", refreshPlanRules);
+  boilerUnder3.addEventListener("change", refreshPlanRules);
+  boilerWarranty.addEventListener("change", refreshPlanRules);
+
+  window.addEventListener("load", function () {
+    resizeCanvasForDisplay();
+    refreshPlanRules();
+  });
+
   window.addEventListener("resize", resizeCanvasForDisplay);
 </script>
 {% endblock %}

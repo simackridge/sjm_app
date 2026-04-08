@@ -1,39 +1,50 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ company_name }}{% endblock %}</title>
+
   <link rel="icon" href="{{ url_for('static', filename=favicon_path) }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="site-header">
-    <div class="container header-inner">
-      <div class="brand-wrap">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="{{ company_name }} logo" class="site-logo">
-        <div>
-          <a href="{{ url_for('index') }}" class="brand">{{ company_name }}</a>
-          <div class="brand-sub">Service Plans</div>
+    <div class="header-inner">
+      <a href="{{ url_for('index') }}" class="brand">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="{{ company_name }} logo">
+        <div class="brand-text">
+          <span class="brand-name">{{ company_name }}</span>
+          <span class="brand-sub">Heating service plans</span>
         </div>
-      </div>
+      </a>
 
-      <nav class="top-nav">
+      <nav class="header-links">
         <a href="{{ url_for('index') }}">Home</a>
         <a href="{{ url_for('signup') }}">Sign up</a>
-        <a href="{{ url_for('terms') }}">Terms</a>
-        <a href="{{ url_for('privacy') }}">Privacy</a>
-        <a href="{{ url_for('admin_login') }}">Admin</a>
+        <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
+        <a href="{{ url_for('privacy') }}" target="_blank">Privacy</a>
       </nav>
     </div>
   </header>
 
-  <main class="container page-pad">
+  <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flash-wrap">
+        <div class="alerts">
           {% for category, message in messages %}
-            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% set alert_class = "alert-error" %}
+            {% if category in ["success"] %}
+              {% set alert_class = "alert-success" %}
+            {% elif category in ["warning"] %}
+              {% set alert_class = "alert-warning" %}
+            {% elif category in ["error", "danger", "login_error"] %}
+              {% set alert_class = "alert-error" %}
+            {% endif %}
+
+            <div class="alert {{ alert_class }}">
+              {{ message }}
+            </div>
           {% endfor %}
         </div>
       {% endif %}
@@ -43,13 +54,20 @@
   </main>
 
   <footer class="site-footer">
-    <div class="container footer-inner">
-      <div>{{ company_name }} | {{ company_phone }} | {{ company_email }}</div>
-      <div>{{ company_address }} | {{ company_reg }}</div>
-      {% if company_website %}
-        <div>{{ company_website }}</div>
-      {% endif %}
-      <div>Terms {{ terms_version }} | Privacy {{ privacy_version }}</div>
+    <div class="footer-inner">
+      <div>{{ company_name }}{% if company_reg %} | {{ company_reg }}{% endif %}</div>
+      <div>
+        {% if company_phone %}
+          <a class="text-link" href="tel:{{ company_phone }}">{{ company_phone }}</a>
+        {% endif %}
+        {% if company_email %}
+          {% if company_phone %} | {% endif %}
+          <a class="text-link" href="mailto:{{ company_email }}">{{ company_email }}</a>
+        {% endif %}
+        {% if company_website %}
+          | <a class="text-link" href="{{ company_website }}" target="_blank">{{ company_website }}</a>
+        {% endif %}
+      </div>
     </div>
   </footer>
 </body>
