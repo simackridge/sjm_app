@@ -49,6 +49,7 @@
             <th>Address</th>
             <th>Plan</th>
             <th>Boiler</th>
+            <th>Consent</th>
             <th>Payment</th>
             <th>Map</th>
             <th>Action</th>
@@ -74,6 +75,13 @@
                 Under 3 years: {{ row.boiler_under_3_years or "-" }}<br>
                 Warranty: {{ row.boiler_warranty_valid or "-" }}<br>
                 Fix &amp; Join: {{ row.fix_and_join or "-" }}
+              </td>
+              <td>
+                Signature name: {{ row.signature_name or "-" }}<br>
+                Drawn signature: {{ "Yes" if row.signature_data else "No" }}<br>
+                Terms: {{ "Yes" if row.accepted_terms else "No" }}<br>
+                Privacy: {{ "Yes" if row.accepted_privacy else "No" }}<br>
+                Fair usage: {{ "Yes" if row.accepted_fair_usage else "No" }}
               </td>
               <td>
                 <span class="pill

@@ -13,6 +13,7 @@ from datetime import datetime, UTC
 import os
 import csv
 import io
+import time
 from functools import wraps
 from urllib.parse import quote_plus
 
@@ -73,6 +74,9 @@ PLAN_PRICES = {
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
 
+# Anti-bot minimum completion time in seconds
+MIN_FORM_SECONDS = 4.0
+
 # -----------------------------------------------------------------------------
 # TEMPLATE GLOBALS
 # -----------------------------------------------------------------------------
@@ -108,6 +112,9 @@ def get_db_connection():
 
 def clean(value):
     return (value or "").strip()
+
+def checkbox_to_bool(value):
+    return value in ("on", "true", "True", "1", True)
 
 def login_required(func):
     @wraps(func)
@@ -168,6 +175,26 @@ def get_eligible_plans(broken, under3, warranty):
         return ["Essential", "Standard", "Complete"], False
 
     return ["Standard", "Complete"], False
+
+def looks_like_bot_submission(form):
+    honeypot = clean(form.get("company_website_confirm"))
+    if honeypot:
+        return True
+
+    started_raw = clean(form.get("form_started_at"))
+    if not started_raw:
+        return True
+
+    try:
+        started_at = float(started_raw)
+    except ValueError:
+        return True
+
+    elapsed = time.time() - started_at
+    if elapsed < MIN_FORM_SECONDS:
+        return True
+
+    return False
 
 # -----------------------------------------------------------------------------
 # ROUTES
@@ -254,6 +281,10 @@ def postcode_lookup():
 
 @app.route("/submit", methods=["POST"])
 def submit():
+    if looks_like_bot_submission(request.form):
+        flash("We could not verify your submission. Please try again.", "error")
+        return redirect(url_for("signup"))
+
     missing_env = validate_required_env()
     if missing_env:
         flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
@@ -275,6 +306,12 @@ def submit():
     plan = clean(request.form.get("selected_plan"))
     fix_join = "Yes" if broken == "Yes" else "No"
 
+    signature_name = clean(request.form.get("signature_name"))
+    signature_data = clean(request.form.get("signature_data"))
+    accepted_terms = checkbox_to_bool(request.form.get("accepted_terms"))
+    accepted_privacy = checkbox_to_bool(request.form.get("accepted_privacy"))
+    accepted_fair_usage = checkbox_to_bool(request.form.get("accepted_fair_usage"))
+
     if not name or not email or not address_line_1 or not city or not postcode:
         flash("Please complete all required fields.", "error")
         return redirect(url_for("signup"))
@@ -295,6 +332,18 @@ def submit():
 
     if plan not in eligible_plans:
         flash("The selected plan is not valid for the answers given.", "error")
+        return redirect(url_for("signup"))
+
+    if not signature_name:
+        flash("Please enter your typed signature name.", "error")
+        return redirect(url_for("signup"))
+
+    if not signature_data or not signature_data.startswith("data:image/png;base64,"):
+        flash("Please provide your drawn signature.", "error")
+        return redirect(url_for("signup"))
+
+    if not accepted_terms or not accepted_privacy or not accepted_fair_usage:
+        flash("Please accept the Terms, Privacy Policy, and Fair Usage Policy.", "error")
         return redirect(url_for("signup"))
 
     if not STRIPE_PRICES.get(plan):
@@ -321,12 +370,17 @@ def submit():
                     boiler_under_3_years,
                     boiler_warranty_valid,
                     fix_and_join,
+                    signature_name,
+                    signature_data,
+                    accepted_terms,
+                    accepted_privacy,
+                    accepted_fair_usage,
                     status,
                     payment_status,
                     created_at,
                     updated_at
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
                 """,
                 (
@@ -343,6 +397,11 @@ def submit():
                     under3,
                     warranty,
                     fix_join,
+                    signature_name,
+                    signature_data,
+                    accepted_terms,
+                    accepted_privacy,
+                    accepted_fair_usage,
                     "New",
                     "Not sent",
                     now,
@@ -589,6 +648,11 @@ def export_csv():
         "Boiler Under 3 Years",
         "Boiler Warranty Valid",
         "Fix And Join",
+        "Signature Name",
+        "Has Drawn Signature",
+        "Accepted Terms",
+        "Accepted Privacy",
+        "Accepted Fair Usage",
         "Status",
         "Payment Status",
         "Stripe Checkout URL",
@@ -612,6 +676,11 @@ def export_csv():
             row.get("boiler_under_3_years"),
             row.get("boiler_warranty_valid"),
             row.get("fix_and_join"),
+            row.get("signature_name"),
+            "Yes" if row.get("signature_data") else "No",
+            row.get("accepted_terms"),
+            row.get("accepted_privacy"),
+            row.get("accepted_fair_usage"),
             row.get("status"),
             row.get("payment_status"),
             row.get("stripe_checkout_url"),

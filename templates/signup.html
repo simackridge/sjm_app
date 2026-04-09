@@ -13,8 +13,20 @@
     <div class="flow-progress-bar" id="flowProgressBar"></div>
   </div>
 
-  <form method="POST" action="{{ url_for('submit') }}" id="signupFlowForm">
+  <form method="POST" action="{{ url_for('submit') }}" id="signupFlowForm" novalidate>
     <input type="hidden" name="selected_plan" id="selected_plan">
+    <input type="hidden" name="signature_data" id="signature_data">
+    <input type="hidden" name="form_started_at" id="form_started_at">
+    <div class="honeypot-wrap" aria-hidden="true">
+      <label for="company_website_confirm">Leave this field empty</label>
+      <input
+        type="text"
+        id="company_website_confirm"
+        name="company_website_confirm"
+        tabindex="-1"
+        autocomplete="off"
+      >
+    </div>
 
     <div class="flow-step active" data-step="1">
       <span class="step-kicker">Step 1</span>
@@ -159,13 +171,63 @@
     <div class="flow-step" data-step="7">
       <span class="step-kicker">Step 7</span>
       <h2>Review your details</h2>
-      <p class="step-text">Check everything looks right, then continue to secure payment.</p>
+      <p class="step-text">Check everything looks right before you continue.</p>
 
       <div class="review-card" id="reviewCard"></div>
 
       <div class="flow-actions">
         <button type="button" class="btn btn-secondary" onclick="prevStep(7)">Back</button>
-        <button type="submit" class="btn btn-primary">Continue to payment</button>
+        <button type="button" class="btn btn-primary" onclick="goToLegal()">Continue</button>
+      </div>
+    </div>
+
+    <div class="flow-step" data-step="8">
+      <span class="step-kicker">Step 8</span>
+      <h2>Agreement and consent</h2>
+      <p class="step-text">Please sign below and confirm your agreement before continuing to secure payment.</p>
+
+      <div class="legal-panel">
+        <div class="field full">
+          <label for="signature_name">Typed signature name *</label>
+          <input type="text" id="signature_name" name="signature_name" required>
+        </div>
+
+        <div class="field full">
+          <label>Draw your signature *</label>
+          <div class="signature-pad-wrap">
+            <canvas id="signaturePad" width="820" height="240"></canvas>
+          </div>
+          <div class="signature-actions">
+            <button type="button" class="btn btn-secondary btn-small" onclick="clearSignature()">Clear signature</button>
+          </div>
+        </div>
+
+        <div class="consent-list">
+          <label class="consent-item">
+            <input type="checkbox" id="accepted_terms" name="accepted_terms">
+            <span>I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms and Conditions</a> *</span>
+          </label>
+
+          <label class="consent-item">
+            <input type="checkbox" id="accepted_privacy" name="accepted_privacy">
+            <span>I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a> *</span>
+          </label>
+
+          <label class="consent-item">
+            <input type="checkbox" id="accepted_fair_usage" name="accepted_fair_usage">
+            <span>I accept the Fair Usage Policy and understand cover is subject to fair use *</span>
+          </label>
+        </div>
+
+        <div class="note-box">
+          <strong>Declaration:</strong><br>
+          By continuing, you confirm that the information provided is correct and that your typed name and drawn signature act as your electronic signature.
+        </div>
+      </div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(8)">Back</button>
+        <button type="submit" class="btn btn-primary" onclick="return validateLegalStep()">Continue to payment</button>
       </div>
     </div>
   </form>
@@ -188,12 +250,13 @@
       target.classList.add("active");
       currentStep = step;
       updateProgress();
+      setTimeout(resizeSignatureCanvas, 50);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
   function updateProgress() {
-    const percent = (currentStep / 7) * 100;
+    const percent = (currentStep / 8) * 100;
     document.getElementById("flowProgressBar").style.width = percent + "%";
   }
 
@@ -399,6 +462,38 @@
     showStep(7);
   }
 
+  function goToLegal() {
+    showStep(8);
+  }
+
+  function validateLegalStep() {
+    const signature = valueOf("signature_name");
+    const acceptedTerms = document.getElementById("accepted_terms").checked;
+    const acceptedPrivacy = document.getElementById("accepted_privacy").checked;
+    const acceptedFairUsage = document.getElementById("accepted_fair_usage").checked;
+    const signatureData = getTrimmedSignatureData();
+
+    if (!signature) {
+      alert("Please enter your typed signature name.");
+      document.getElementById("signature_name").focus();
+      return false;
+    }
+
+    if (!signatureData) {
+      alert("Please draw your signature.");
+      return false;
+    }
+
+    document.getElementById("signature_data").value = signatureData;
+
+    if (!acceptedTerms || !acceptedPrivacy || !acceptedFairUsage) {
+      alert("Please accept the Terms, Privacy Policy, and Fair Usage Policy.");
+      return false;
+    }
+
+    return true;
+  }
+
   function escapeHtml(text) {
     return String(text || "")
       .replaceAll("&", "&amp;")
@@ -408,6 +503,148 @@
       .replaceAll("'", "&#039;");
   }
 
+  // ---------------------------------------------------------------------------
+  // Signature pad
+  // ---------------------------------------------------------------------------
+
+  const canvas = document.getElementById("signaturePad");
+  const ctx = canvas.getContext("2d");
+  let drawing = false;
+  let hasSignature = false;
+
+  function setupCanvasAppearance() {
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#ffffff";
+  }
+
+  function resizeSignatureCanvas() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const displayWidth = canvas.clientWidth || 820;
+    const displayHeight = 240;
+
+    const existing = hasSignature ? canvas.toDataURL("image/png") : null;
+
+    canvas.width = displayWidth * ratio;
+    canvas.height = displayHeight * ratio;
+    canvas.style.height = displayHeight + "px";
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    setupCanvasAppearance();
+
+    if (existing) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+      };
+      img.src = existing;
+    }
+  }
+
+  function getCanvasPoint(event) {
+    const rect = canvas.getBoundingClientRect();
+    if (event.touches && event.touches.length > 0) {
+      return {
+        x: event.touches[0].clientX - rect.left,
+        y: event.touches[0].clientY - rect.top
+      };
+    }
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
+  }
+
+  function startDrawing(event) {
+    drawing = true;
+    hasSignature = true;
+    const point = getCanvasPoint(event);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    event.preventDefault();
+  }
+
+  function draw(event) {
+    if (!drawing) return;
+    const point = getCanvasPoint(event);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    event.preventDefault();
+  }
+
+  function stopDrawing() {
+    drawing = false;
+    ctx.closePath();
+  }
+
+  function clearSignature() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.clearRect(0, 0, canvas.width / ratio, canvas.height / ratio);
+    hasSignature = false;
+    document.getElementById("signature_data").value = "";
+  }
+
+  function getTrimmedSignatureData() {
+    if (!hasSignature) return "";
+
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const width = canvas.width / ratio;
+    const height = canvas.height / ratio;
+    const imageData = ctx.getImageData(0, 0, width, height).data;
+
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    let found = false;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4;
+        const alpha = imageData[index + 3];
+        if (alpha > 0) {
+          found = true;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (!found) return "";
+
+    const padding = 8;
+    minX = Math.max(0, minX - padding);
+    minY = Math.max(0, minY - padding);
+    maxX = Math.min(width, maxX + padding);
+    maxY = Math.min(height, maxY + padding);
+
+    const trimWidth = Math.max(1, maxX - minX);
+    const trimHeight = Math.max(1, maxY - minY);
+
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = trimWidth;
+    tempCanvas.height = trimHeight;
+    const tempCtx = tempCanvas.getContext("2d");
+
+    tempCtx.drawImage(canvas, minX, minY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight);
+    return tempCanvas.toDataURL("image/png");
+  }
+
+  canvas.addEventListener("mousedown", startDrawing);
+  canvas.addEventListener("mousemove", draw);
+  canvas.addEventListener("mouseup", stopDrawing);
+  canvas.addEventListener("mouseleave", stopDrawing);
+
+  canvas.addEventListener("touchstart", startDrawing, { passive: false });
+  canvas.addEventListener("touchmove", draw, { passive: false });
+  canvas.addEventListener("touchend", stopDrawing);
+  canvas.addEventListener("touchcancel", stopDrawing);
+
+  window.addEventListener("resize", resizeSignatureCanvas);
+
+  document.getElementById("form_started_at").value = String(Date.now() / 1000);
+
   updateProgress();
+  resizeSignatureCanvas();
 </script>
 {% endblock %}
