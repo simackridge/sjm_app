@@ -17,7 +17,6 @@ from functools import wraps
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
-import resend
 import stripe
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -47,9 +46,6 @@ COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "")
 COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-
-RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
-resend.api_key = os.environ.get("RESEND_API_KEY")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
@@ -164,6 +160,15 @@ def build_directions_link(row):
     address = build_full_address(row)
     return f"https://www.google.com/maps/dir/?api=1&destination={quote_plus(address)}"
 
+def get_eligible_plans(broken, under3, warranty):
+    if broken == "Yes":
+        return ["Standard", "Complete"], True
+
+    if under3 == "Yes" or warranty == "Yes":
+        return ["Essential", "Standard", "Complete"], False
+
+    return ["Standard", "Complete"], False
+
 # -----------------------------------------------------------------------------
 # ROUTES
 # -----------------------------------------------------------------------------
@@ -263,38 +268,38 @@ def submit():
     city = clean(request.form.get("city"))
     postcode = clean(request.form.get("postcode")).upper()
 
-    plan = clean(request.form.get("selected_plan"))
     broken = clean(request.form.get("boiler_broken"))
     under3 = clean(request.form.get("boiler_under_3_years"))
     warranty = clean(request.form.get("boiler_warranty_valid"))
-    fix_join = clean(request.form.get("fix_and_join"))
 
-    if not name or not email or not address_line_1 or not city or not postcode or not plan:
+    plan = clean(request.form.get("selected_plan"))
+    fix_join = "Yes" if broken == "Yes" else "No"
+
+    if not name or not email or not address_line_1 or not city or not postcode:
         flash("Please complete all required fields.", "error")
         return redirect(url_for("signup"))
 
-    if plan not in PLAN_PRICES:
-        flash("Invalid plan selected.", "error")
+    if broken not in ["Yes", "No"]:
+        flash("Please answer whether the boiler is currently broken.", "error")
+        return redirect(url_for("signup"))
+
+    if broken == "No":
+        if under3 not in ["Yes", "No"] or warranty not in ["Yes", "No"]:
+            flash("Please answer the boiler age and warranty questions.", "error")
+            return redirect(url_for("signup"))
+    else:
+        under3 = ""
+        warranty = ""
+
+    eligible_plans, _ = get_eligible_plans(broken, under3, warranty)
+
+    if plan not in eligible_plans:
+        flash("The selected plan is not valid for the answers given.", "error")
         return redirect(url_for("signup"))
 
     if not STRIPE_PRICES.get(plan):
         flash(f"Stripe price is not configured for {plan}.", "error")
         return redirect(url_for("signup"))
-
-    if plan == "Essential":
-        if broken == "Yes":
-            flash("Essential is not allowed for broken boilers.", "error")
-            return redirect(url_for("signup"))
-
-        if not (under3 == "Yes" or warranty == "Yes"):
-            flash(
-                "Essential requires the boiler to be under 3 years old or under warranty.",
-                "error",
-            )
-            return redirect(url_for("signup"))
-
-    if broken == "Yes":
-        fix_join = "Yes"
 
     conn = get_db_connection()
     try:

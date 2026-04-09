@@ -284,7 +284,8 @@ img{max-width:100%;display:block}
   margin:0;
 }
 
-.form-card{
+.form-card,
+.flow-card{
   max-width:960px;
 }
 
@@ -397,7 +398,8 @@ img{max-width:100%;display:block}
   background:var(--panel-2);
 }
 
-.summary-grid{
+.summary-grid,
+.review-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:12px;
@@ -546,6 +548,105 @@ code{
   color:#fff;
 }
 
+.flow-progress{
+  width:100%;
+  height:10px;
+  background:rgba(255,255,255,0.08);
+  border-radius:999px;
+  overflow:hidden;
+  margin-bottom:28px;
+}
+
+.flow-progress-bar{
+  height:100%;
+  width:14%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.25s ease;
+}
+
+.flow-step{
+  display:none;
+}
+
+.flow-step.active{
+  display:block;
+}
+
+.step-kicker{
+  display:inline-block;
+  margin-bottom:8px;
+  color:#ffb07a;
+  font-weight:700;
+  font-size:0.92rem;
+}
+
+.step-text{
+  color:var(--muted);
+  margin-bottom:22px;
+}
+
+.flow-actions{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:24px;
+  flex-wrap:wrap;
+}
+
+.choice-grid,
+.plan-option-grid{
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:16px;
+}
+
+.choice-card,
+.plan-choice-card{
+  display:block;
+  cursor:pointer;
+}
+
+.choice-card input,
+.plan-choice-card input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.choice-card span,
+.plan-choice-card-inner{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:92px;
+  padding:18px;
+  border-radius:16px;
+  border:1px solid var(--line);
+  background:var(--panel-2);
+  color:#fff;
+  font-weight:700;
+  text-align:center;
+}
+
+.plan-choice-card-inner{
+  flex-direction:column;
+  gap:8px;
+}
+
+.choice-card input:checked + span,
+.plan-choice-card.selected .plan-choice-card-inner{
+  border-color:rgba(255,106,0,0.75);
+  box-shadow:0 0 0 3px rgba(255,106,0,0.15);
+  background:rgba(255,106,0,0.10);
+}
+
+.review-card{
+  padding:20px;
+  border-radius:16px;
+  border:1px solid var(--line);
+  background:var(--panel-2);
+}
+
 @media (max-width: 980px){
   .hero-card{
     grid-template-columns:1fr;
@@ -562,11 +663,11 @@ code{
     align-items:flex-start;
   }
 
-  .form-grid{
-    grid-template-columns:1fr;
-  }
-
-  .summary-grid{
+  .form-grid,
+  .summary-grid,
+  .review-grid,
+  .choice-grid,
+  .plan-option-grid{
     grid-template-columns:1fr;
   }
 
@@ -578,5 +679,13 @@ code{
   .postcode-row{
     flex-direction:column;
     align-items:stretch;
+  }
+
+  .flow-actions{
+    flex-direction:column;
+  }
+
+  .flow-actions .btn{
+    width:100%;
   }
 }

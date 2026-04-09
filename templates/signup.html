@@ -5,136 +5,409 @@
 {% block content %}
 <section class="page-header">
   <h1>Join {{ company_name }} Service Plans</h1>
-  <p>Simple monthly cover with a premium service experience.</p>
+  <p>Answer a few simple questions and we’ll show the right options for your boiler.</p>
 </section>
 
-<div class="card form-card">
-  <form method="POST" action="{{ url_for('submit') }}" class="form-grid">
-    <div class="field full">
-      <label for="full_name">Full name *</label>
-      <input type="text" id="full_name" name="full_name" required>
-    </div>
+<div class="card flow-card">
+  <div class="flow-progress">
+    <div class="flow-progress-bar" id="flowProgressBar"></div>
+  </div>
 
-    <div class="field">
-      <label for="email">Email address *</label>
-      <input type="email" id="email" name="email" required>
-    </div>
+  <form method="POST" action="{{ url_for('submit') }}" id="signupFlowForm">
+    <input type="hidden" name="selected_plan" id="selected_plan">
 
-    <div class="field">
-      <label for="phone">Phone number</label>
-      <input type="text" id="phone" name="phone">
-    </div>
+    <div class="flow-step active" data-step="1">
+      <span class="step-kicker">Step 1</span>
+      <h2>Your details</h2>
+      <p class="step-text">Let’s start with your contact details.</p>
 
-    <div class="field">
-      <label for="postcode">Postcode *</label>
-      <div class="postcode-row">
-        <input type="text" id="postcode" name="postcode" required>
-        <button type="button" class="btn btn-secondary btn-small" onclick="lookupPostcode()">Lookup</button>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="full_name">Full name *</label>
+          <input type="text" id="full_name" name="full_name" required>
+        </div>
+
+        <div class="field">
+          <label for="email">Email address *</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+
+        <div class="field">
+          <label for="phone">Phone number</label>
+          <input type="text" id="phone" name="phone">
+        </div>
+      </div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-primary" onclick="nextStep(1)">Continue</button>
       </div>
     </div>
 
-    <div class="field">
-      <label for="city">Town / City *</label>
-      <input type="text" id="city" name="city" required>
-    </div>
+    <div class="flow-step" data-step="2">
+      <span class="step-kicker">Step 2</span>
+      <h2>Your address</h2>
+      <p class="step-text">Use postcode lookup, then fill in the property address.</p>
 
-    <div class="field full">
-      <label for="address_line_1">Address line 1 *</label>
-      <input type="text" id="address_line_1" name="address_line_1" required>
-    </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="postcode">Postcode *</label>
+          <div class="postcode-row">
+            <input type="text" id="postcode" name="postcode" required>
+            <button type="button" class="btn btn-secondary btn-small" onclick="lookupPostcode()">Lookup</button>
+          </div>
+        </div>
 
-    <div class="field full">
-      <label for="address_line_2">Address line 2</label>
-      <input type="text" id="address_line_2" name="address_line_2">
-    </div>
+        <div class="field">
+          <label for="city">Town / City *</label>
+          <input type="text" id="city" name="city" required>
+        </div>
 
-    <div class="field">
-      <label for="selected_plan">Choose your plan *</label>
-      <select id="selected_plan" name="selected_plan" required>
-        <option value="">Please choose</option>
-        <option value="Essential">Essential - £11.00/month</option>
-        <option value="Standard">Standard - £17.99/month</option>
-        <option value="Complete">Complete - £23.99/month</option>
-      </select>
-    </div>
+        <div class="field full">
+          <label for="address_line_1">Address line 1 *</label>
+          <input type="text" id="address_line_1" name="address_line_1" required>
+        </div>
 
-    <div class="field">
-      <label for="boiler_broken">Is your boiler currently broken?</label>
-      <select id="boiler_broken" name="boiler_broken">
-        <option value="">Please choose</option>
-        <option value="No">No</option>
-        <option value="Yes">Yes</option>
-      </select>
-    </div>
+        <div class="field full">
+          <label for="address_line_2">Address line 2</label>
+          <input type="text" id="address_line_2" name="address_line_2">
+        </div>
+      </div>
 
-    <div class="field">
-      <label for="boiler_under_3_years">Is your boiler under 3 years old?</label>
-      <select id="boiler_under_3_years" name="boiler_under_3_years">
-        <option value="">Please choose</option>
-        <option value="No">No</option>
-        <option value="Yes">Yes</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="boiler_warranty_valid">Is the boiler still under warranty?</label>
-      <select id="boiler_warranty_valid" name="boiler_warranty_valid">
-        <option value="">Please choose</option>
-        <option value="No">No</option>
-        <option value="Yes">Yes</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="fix_and_join">Fix &amp; Join</label>
-      <select id="fix_and_join" name="fix_and_join">
-        <option value="">Please choose</option>
-        <option value="No">No</option>
-        <option value="Yes">Yes</option>
-      </select>
-    </div>
-
-    <div class="field full">
-      <div class="note-box">
-        <strong>Please note:</strong><br>
-        Essential is only available where the boiler is not broken and is either under 3 years old or still under warranty.
-        If the boiler is already broken, Fix &amp; Join may apply.
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(2)">Back</button>
+        <button type="button" class="btn btn-primary" onclick="nextStep(2)">Continue</button>
       </div>
     </div>
 
-    <div class="field full">
-      <button type="submit" class="btn btn-primary btn-wide">Continue</button>
+    <div class="flow-step" data-step="3">
+      <span class="step-kicker">Step 3</span>
+      <h2>Is your boiler currently broken?</h2>
+      <p class="step-text">This decides which questions and plans come next.</p>
+
+      <div class="choice-grid">
+        <label class="choice-card">
+          <input type="radio" name="boiler_broken" value="No">
+          <span>No</span>
+        </label>
+        <label class="choice-card">
+          <input type="radio" name="boiler_broken" value="Yes">
+          <span>Yes</span>
+        </label>
+      </div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(3)">Back</button>
+        <button type="button" class="btn btn-primary" onclick="handleBrokenStep()">Continue</button>
+      </div>
+    </div>
+
+    <div class="flow-step" data-step="4">
+      <span class="step-kicker">Step 4</span>
+      <h2>Is the boiler under 3 years old?</h2>
+
+      <div class="choice-grid">
+        <label class="choice-card">
+          <input type="radio" name="boiler_under_3_years" value="Yes">
+          <span>Yes</span>
+        </label>
+        <label class="choice-card">
+          <input type="radio" name="boiler_under_3_years" value="No">
+          <span>No</span>
+        </label>
+      </div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(4)">Back</button>
+        <button type="button" class="btn btn-primary" onclick="nextStep(4)">Continue</button>
+      </div>
+    </div>
+
+    <div class="flow-step" data-step="5">
+      <span class="step-kicker">Step 5</span>
+      <h2>Is the boiler still under warranty?</h2>
+
+      <div class="choice-grid">
+        <label class="choice-card">
+          <input type="radio" name="boiler_warranty_valid" value="Yes">
+          <span>Yes</span>
+        </label>
+        <label class="choice-card">
+          <input type="radio" name="boiler_warranty_valid" value="No">
+          <span>No</span>
+        </label>
+      </div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(5)">Back</button>
+        <button type="button" class="btn btn-primary" onclick="buildPlansAndGo()">Continue</button>
+      </div>
+    </div>
+
+    <div class="flow-step" data-step="6">
+      <span class="step-kicker">Step 6</span>
+      <h2>Your recommended plan options</h2>
+      <p class="step-text" id="planIntroText"></p>
+
+      <div id="planOptions" class="plan-option-grid"></div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="goBackFromPlanStep()">Back</button>
+        <button type="button" class="btn btn-primary" onclick="goToReview()">Continue</button>
+      </div>
+    </div>
+
+    <div class="flow-step" data-step="7">
+      <span class="step-kicker">Step 7</span>
+      <h2>Review your details</h2>
+      <p class="step-text">Check everything looks right, then continue to secure payment.</p>
+
+      <div class="review-card" id="reviewCard"></div>
+
+      <div class="flow-actions">
+        <button type="button" class="btn btn-secondary" onclick="prevStep(7)">Back</button>
+        <button type="submit" class="btn btn-primary">Continue to payment</button>
+      </div>
     </div>
   </form>
 </div>
 
 <script>
-async function lookupPostcode() {
-  const postcodeInput = document.getElementById("postcode");
-  const cityInput = document.getElementById("city");
-  const postcode = postcodeInput.value.trim();
+  const planPrices = {
+    Essential: "11.00",
+    Standard: "17.99",
+    Complete: "23.99"
+  };
 
-  if (!postcode) {
-    alert("Please enter a postcode first.");
-    return;
+  let currentStep = 1;
+  let previousPlanStep = 5;
+
+  function showStep(step) {
+    document.querySelectorAll(".flow-step").forEach(el => el.classList.remove("active"));
+    const target = document.querySelector(`.flow-step[data-step="${step}"]`);
+    if (target) {
+      target.classList.add("active");
+      currentStep = step;
+      updateProgress();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
-  try {
-    const response = await fetch(`/api/postcode-lookup?postcode=${encodeURIComponent(postcode)}`);
-    const data = await response.json();
+  function updateProgress() {
+    const percent = (currentStep / 7) * 100;
+    document.getElementById("flowProgressBar").style.width = percent + "%";
+  }
 
-    if (!response.ok || data.error) {
-      alert(data.error || "Postcode lookup failed.");
+  function valueOf(id) {
+    return document.getElementById(id).value.trim();
+  }
+
+  function radioValue(name) {
+    const checked = document.querySelector(`input[name="${name}"]:checked`);
+    return checked ? checked.value : "";
+  }
+
+  function requireFields(ids, message) {
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (!el || !el.value.trim()) {
+        alert(message);
+        if (el) el.focus();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function requireRadio(name, message) {
+    if (!radioValue(name)) {
+      alert(message);
+      return false;
+    }
+    return true;
+  }
+
+  function nextStep(step) {
+    if (step === 1) {
+      if (!requireFields(["full_name", "email"], "Please complete your name and email address.")) return;
+    }
+
+    if (step === 2) {
+      if (!requireFields(["postcode", "city", "address_line_1"], "Please complete the address fields.")) return;
+    }
+
+    if (step === 4) {
+      if (!requireRadio("boiler_under_3_years", "Please answer whether the boiler is under 3 years old.")) return;
+    }
+
+    if (step === 5) {
+      if (!requireRadio("boiler_warranty_valid", "Please answer whether the boiler is under warranty.")) return;
+    }
+
+    showStep(step + 1);
+  }
+
+  function prevStep(step) {
+    showStep(step - 1);
+  }
+
+  async function lookupPostcode() {
+    const postcodeInput = document.getElementById("postcode");
+    const cityInput = document.getElementById("city");
+    const postcode = postcodeInput.value.trim();
+
+    if (!postcode) {
+      alert("Please enter a postcode first.");
       return;
     }
 
-    postcodeInput.value = data.postcode || postcode.toUpperCase();
-    if (!cityInput.value && data.city) {
-      cityInput.value = data.city;
+    try {
+      const response = await fetch(`/api/postcode-lookup?postcode=${encodeURIComponent(postcode)}`);
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        alert(data.error || "Postcode lookup failed.");
+        return;
+      }
+
+      postcodeInput.value = data.postcode || postcode.toUpperCase();
+      if (!cityInput.value && data.city) {
+        cityInput.value = data.city;
+      }
+    } catch (error) {
+      alert("Postcode lookup failed.");
     }
-  } catch (error) {
-    alert("Postcode lookup failed.");
   }
-}
+
+  function handleBrokenStep() {
+    if (!requireRadio("boiler_broken", "Please answer whether the boiler is currently broken.")) return;
+
+    const broken = radioValue("boiler_broken");
+
+    if (broken === "Yes") {
+      const under3Inputs = document.querySelectorAll('input[name="boiler_under_3_years"]');
+      const warrantyInputs = document.querySelectorAll('input[name="boiler_warranty_valid"]');
+      under3Inputs.forEach(i => i.checked = false);
+      warrantyInputs.forEach(i => i.checked = false);
+      previousPlanStep = 3;
+      buildPlansAndGo();
+      return;
+    }
+
+    showStep(4);
+  }
+
+  function getEligiblePlans() {
+    const broken = radioValue("boiler_broken");
+    const under3 = radioValue("boiler_under_3_years");
+    const warranty = radioValue("boiler_warranty_valid");
+
+    if (broken === "Yes") {
+      return {
+        plans: ["Standard", "Complete"],
+        intro: "Because the boiler is currently broken, Essential is not available. Fix & Join will apply and you can choose from the plans below after repair."
+      };
+    }
+
+    if (under3 === "Yes" || warranty === "Yes") {
+      return {
+        plans: ["Essential", "Standard", "Complete"],
+        intro: "Good news — your boiler qualifies for all service plan options."
+      };
+    }
+
+    return {
+      plans: ["Standard", "Complete"],
+      intro: "Based on your answers, Standard and Complete are the available options."
+    };
+  }
+
+  function buildPlansAndGo() {
+    const broken = radioValue("boiler_broken");
+
+    if (broken === "No") {
+      if (!requireRadio("boiler_under_3_years", "Please answer whether the boiler is under 3 years old.")) return;
+      if (!requireRadio("boiler_warranty_valid", "Please answer whether the boiler is under warranty.")) return;
+      previousPlanStep = 5;
+    }
+
+    const result = getEligiblePlans();
+    const container = document.getElementById("planOptions");
+    const intro = document.getElementById("planIntroText");
+    const hiddenPlan = document.getElementById("selected_plan");
+
+    intro.textContent = result.intro;
+    container.innerHTML = "";
+    hiddenPlan.value = "";
+
+    result.plans.forEach(plan => {
+      const label = document.createElement("label");
+      label.className = "plan-choice-card";
+      label.innerHTML = `
+        <input type="radio" name="plan_choice_visible" value="${plan}">
+        <div class="plan-choice-card-inner">
+          <strong>${plan}</strong>
+          <span>£${planPrices[plan]}/month</span>
+        </div>
+      `;
+      container.appendChild(label);
+    });
+
+    container.querySelectorAll('input[name="plan_choice_visible"]').forEach(input => {
+      input.addEventListener("change", () => {
+        hiddenPlan.value = input.value;
+        container.querySelectorAll(".plan-choice-card").forEach(card => card.classList.remove("selected"));
+        input.closest(".plan-choice-card").classList.add("selected");
+      });
+    });
+
+    showStep(6);
+  }
+
+  function goBackFromPlanStep() {
+    showStep(previousPlanStep);
+  }
+
+  function goToReview() {
+    const selectedPlan = document.getElementById("selected_plan").value;
+    if (!selectedPlan) {
+      alert("Please choose a plan before continuing.");
+      return;
+    }
+
+    const review = document.getElementById("reviewCard");
+    const broken = radioValue("boiler_broken");
+    const under3 = radioValue("boiler_under_3_years");
+    const warranty = radioValue("boiler_warranty_valid");
+
+    review.innerHTML = `
+      <div class="review-grid">
+        <div><strong>Name:</strong> ${escapeHtml(valueOf("full_name"))}</div>
+        <div><strong>Email:</strong> ${escapeHtml(valueOf("email"))}</div>
+        <div><strong>Phone:</strong> ${escapeHtml(valueOf("phone")) || "-"}</div>
+        <div><strong>Postcode:</strong> ${escapeHtml(valueOf("postcode"))}</div>
+        <div><strong>Address:</strong> ${escapeHtml(valueOf("address_line_1"))}</div>
+        <div><strong>Address line 2:</strong> ${escapeHtml(valueOf("address_line_2")) || "-"}</div>
+        <div><strong>Town / City:</strong> ${escapeHtml(valueOf("city"))}</div>
+        <div><strong>Boiler broken:</strong> ${escapeHtml(broken)}</div>
+        <div><strong>Under 3 years:</strong> ${escapeHtml(under3 || "-")}</div>
+        <div><strong>Under warranty:</strong> ${escapeHtml(warranty || "-")}</div>
+        <div><strong>Selected plan:</strong> ${escapeHtml(selectedPlan)}</div>
+        <div><strong>Monthly price:</strong> £${escapeHtml(planPrices[selectedPlan])}</div>
+      </div>
+    `;
+
+    showStep(7);
+  }
+
+  function escapeHtml(text) {
+    return String(text || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  updateProgress();
 </script>
 {% endblock %}
