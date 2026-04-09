@@ -160,6 +160,11 @@
       <h2>Your recommended plan options</h2>
       <p class="step-text" id="planIntroText"></p>
 
+      <div class="fix-join-banner" id="fixJoinBanner">
+        <strong>Fix &amp; Join applies.</strong><br>
+        Your boiler is currently broken, so a one-off repair and join fee of £{{ fix_and_join_fee }} applies before ongoing cover.
+      </div>
+
       <div id="planOptions" class="plan-option-grid"></div>
 
       <div class="flow-actions">
@@ -240,6 +245,7 @@
     Complete: "23.99"
   };
 
+  const fixAndJoinFee = "{{ fix_and_join_fee }}";
   let currentStep = 1;
   let previousPlanStep = 5;
 
@@ -367,20 +373,23 @@
     if (broken === "Yes") {
       return {
         plans: ["Standard", "Complete"],
-        intro: "Because the boiler is currently broken, Essential is not available. Fix & Join will apply and you can choose from the plans below after repair."
+        intro: `Because the boiler is currently broken, Essential is not available. Fix & Join applies with a one-off fee of £${fixAndJoinFee} before ongoing cover starts.`,
+        fixJoin: true
       };
     }
 
     if (under3 === "Yes" || warranty === "Yes") {
       return {
         plans: ["Essential", "Standard", "Complete"],
-        intro: "Good news — your boiler qualifies for all service plan options."
+        intro: "Good news — your boiler qualifies for all service plan options.",
+        fixJoin: false
       };
     }
 
     return {
       plans: ["Standard", "Complete"],
-      intro: "Based on your answers, Standard and Complete are the available options."
+      intro: "Based on your answers, Standard and Complete are the available options.",
+      fixJoin: false
     };
   }
 
@@ -397,10 +406,12 @@
     const container = document.getElementById("planOptions");
     const intro = document.getElementById("planIntroText");
     const hiddenPlan = document.getElementById("selected_plan");
+    const fixJoinBanner = document.getElementById("fixJoinBanner");
 
     intro.textContent = result.intro;
     container.innerHTML = "";
     hiddenPlan.value = "";
+    fixJoinBanner.style.display = result.fixJoin ? "block" : "none";
 
     result.plans.forEach(plan => {
       const label = document.createElement("label");
@@ -441,6 +452,7 @@
     const broken = radioValue("boiler_broken");
     const under3 = radioValue("boiler_under_3_years");
     const warranty = radioValue("boiler_warranty_valid");
+    const fixJoin = broken === "Yes";
 
     review.innerHTML = `
       <div class="review-grid">
@@ -456,6 +468,8 @@
         <div><strong>Under warranty:</strong> ${escapeHtml(warranty || "-")}</div>
         <div><strong>Selected plan:</strong> ${escapeHtml(selectedPlan)}</div>
         <div><strong>Monthly price:</strong> £${escapeHtml(planPrices[selectedPlan])}</div>
+        <div><strong>Fix & Join applies:</strong> ${fixJoin ? "Yes" : "No"}</div>
+        <div><strong>Fix & Join fee:</strong> ${fixJoin ? "£" + fixAndJoinFee : "-"}</div>
       </div>
     `;
 
@@ -502,10 +516,6 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
   }
-
-  // ---------------------------------------------------------------------------
-  // Signature pad
-  // ---------------------------------------------------------------------------
 
   const canvas = document.getElementById("signaturePad");
   const ctx = canvas.getContext("2d");

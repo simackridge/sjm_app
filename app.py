@@ -71,11 +71,13 @@ PLAN_PRICES = {
     "Complete": "23.99",
 }
 
+FIX_AND_JOIN_FEE = "240.99"
+
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
 
-# Anti-bot minimum completion time in seconds
-MIN_FORM_SECONDS = 4.0
+# Less aggressive anti-bot timing
+MIN_FORM_SECONDS = 2.0
 
 # -----------------------------------------------------------------------------
 # TEMPLATE GLOBALS
@@ -90,6 +92,7 @@ def inject_company_details():
         "company_email": COMPANY_EMAIL,
         "company_website": COMPANY_WEBSITE,
         "favicon_path": FAVICON_PATH,
+        "fix_and_join_fee": FIX_AND_JOIN_FEE,
     }
 
 # -----------------------------------------------------------------------------
@@ -141,6 +144,8 @@ def validate_required_env():
         "DB_HOST": DB_HOST,
         "DB_PORT": DB_PORT,
         "STRIPE_SECRET_KEY": os.environ.get("STRIPE_SECRET_KEY"),
+        "STRIPE_PRICE_STANDARD": STRIPE_PRICES.get("Standard"),
+        "STRIPE_PRICE_COMPLETE": STRIPE_PRICES.get("Complete"),
     }
     for key, value in required.items():
         if not value:
@@ -305,6 +310,7 @@ def submit():
 
     plan = clean(request.form.get("selected_plan"))
     fix_join = "Yes" if broken == "Yes" else "No"
+    fix_and_join_fee = FIX_AND_JOIN_FEE if fix_join == "Yes" else ""
 
     signature_name = clean(request.form.get("signature_name"))
     signature_data = clean(request.form.get("signature_data"))
@@ -370,6 +376,7 @@ def submit():
                     boiler_under_3_years,
                     boiler_warranty_valid,
                     fix_and_join,
+                    fix_and_join_fee,
                     signature_name,
                     signature_data,
                     accepted_terms,
@@ -380,7 +387,7 @@ def submit():
                     created_at,
                     updated_at
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
                 """,
                 (
@@ -397,6 +404,7 @@ def submit():
                     under3,
                     warranty,
                     fix_join,
+                    fix_and_join_fee,
                     signature_name,
                     signature_data,
                     accepted_terms,
@@ -426,7 +434,11 @@ def submit():
             success_url=safe_success_url(),
             cancel_url=safe_cancel_url(),
             customer_email=email,
-            metadata={"signup_id": str(signup_id)},
+            metadata={
+                "signup_id": str(signup_id),
+                "fix_and_join": fix_join,
+                "fix_and_join_fee": fix_and_join_fee,
+            },
         )
     except Exception as e:
         conn = get_db_connection()
@@ -596,7 +608,11 @@ def resend_payment(id):
             success_url=safe_success_url(),
             cancel_url=safe_cancel_url(),
             customer_email=row.get("email") or None,
-            metadata={"signup_id": str(id)},
+            metadata={
+                "signup_id": str(id),
+                "fix_and_join": row.get("fix_and_join") or "No",
+                "fix_and_join_fee": row.get("fix_and_join_fee") or "",
+            },
         )
 
         with conn.cursor() as cur:
@@ -648,6 +664,7 @@ def export_csv():
         "Boiler Under 3 Years",
         "Boiler Warranty Valid",
         "Fix And Join",
+        "Fix And Join Fee",
         "Signature Name",
         "Has Drawn Signature",
         "Accepted Terms",
@@ -676,6 +693,7 @@ def export_csv():
             row.get("boiler_under_3_years"),
             row.get("boiler_warranty_valid"),
             row.get("fix_and_join"),
+            row.get("fix_and_join_fee"),
             row.get("signature_name"),
             "Yes" if row.get("signature_data") else "No",
             row.get("accepted_terms"),

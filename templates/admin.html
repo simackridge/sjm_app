@@ -68,13 +68,14 @@
               <td>{{ build_full_address(row) }}</td>
               <td>
                 {{ row.selected_plan }}<br>
-                £{{ row.monthly_price }}
+                £{{ row.monthly_price }}<br>
+                Fix &amp; Join: {{ row.fix_and_join or "No" }}<br>
+                Fee: {{ "£" ~ row.fix_and_join_fee if row.fix_and_join_fee else "-" }}
               </td>
               <td>
                 Broken: {{ row.boiler_broken or "-" }}<br>
                 Under 3 years: {{ row.boiler_under_3_years or "-" }}<br>
-                Warranty: {{ row.boiler_warranty_valid or "-" }}<br>
-                Fix &amp; Join: {{ row.fix_and_join or "-" }}
+                Warranty: {{ row.boiler_warranty_valid or "-" }}
               </td>
               <td>
                 Signature name: {{ row.signature_name or "-" }}<br>

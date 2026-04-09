@@ -349,6 +349,17 @@ img{max-width:100%;display:block}
   line-height:1.6;
 }
 
+.fix-join-banner{
+  display:none;
+  margin-bottom:18px;
+  padding:16px 18px;
+  border-radius:16px;
+  border:1px solid rgba(255,106,0,0.38);
+  background:rgba(255,106,0,0.10);
+  color:#ffd6b8;
+  line-height:1.6;
+}
+
 .center-wrap{
   display:flex;
   justify-content:center;
