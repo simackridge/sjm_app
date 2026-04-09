@@ -16,13 +16,12 @@
   <form method="POST" action="{{ url_for('submit') }}" id="signupFlowForm" novalidate>
     <input type="hidden" name="selected_plan" id="selected_plan">
     <input type="hidden" name="signature_data" id="signature_data">
-    <input type="hidden" name="form_started_at" id="form_started_at">
     <div class="honeypot-wrap" aria-hidden="true">
-      <label for="company_website_confirm">Leave this field empty</label>
+      <label for="contact_reference">Leave this field empty</label>
       <input
         type="text"
-        id="company_website_confirm"
-        name="company_website_confirm"
+        id="contact_reference"
+        name="contact_reference"
         tabindex="-1"
         autocomplete="off"
       >
@@ -161,8 +160,8 @@
       <p class="step-text" id="planIntroText"></p>
 
       <div class="fix-join-banner" id="fixJoinBanner">
-        <strong>Fix &amp; Join applies.</strong><br>
-        Your boiler is currently broken, so a one-off repair and join fee of £{{ fix_and_join_fee }} applies before ongoing cover.
+        <strong>Fix &amp; Join applies</strong><br>
+        Your boiler is currently broken, so a one-off repair and join fee of £{{ fix_and_join_fee }} applies before ongoing cover starts.
       </div>
 
       <div id="planOptions" class="plan-option-grid"></div>
@@ -651,8 +650,6 @@
   canvas.addEventListener("touchcancel", stopDrawing);
 
   window.addEventListener("resize", resizeSignatureCanvas);
-
-  document.getElementById("form_started_at").value = String(Date.now() / 1000);
 
   updateProgress();
   resizeSignatureCanvas();

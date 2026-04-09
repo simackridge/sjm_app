@@ -13,7 +13,6 @@ from datetime import datetime, UTC
 import os
 import csv
 import io
-import time
 from functools import wraps
 from urllib.parse import quote_plus
 
@@ -75,9 +74,6 @@ FIX_AND_JOIN_FEE = "240.99"
 
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
-
-# Less aggressive anti-bot timing
-MIN_FORM_SECONDS = 2.0
 
 # -----------------------------------------------------------------------------
 # TEMPLATE GLOBALS
@@ -182,24 +178,9 @@ def get_eligible_plans(broken, under3, warranty):
     return ["Standard", "Complete"], False
 
 def looks_like_bot_submission(form):
-    honeypot = clean(form.get("company_website_confirm"))
-    if honeypot:
-        return True
-
-    started_raw = clean(form.get("form_started_at"))
-    if not started_raw:
-        return True
-
-    try:
-        started_at = float(started_raw)
-    except ValueError:
-        return True
-
-    elapsed = time.time() - started_at
-    if elapsed < MIN_FORM_SECONDS:
-        return True
-
-    return False
+    # Honeypot only. If this hidden field has any value, reject.
+    honeypot = clean(form.get("contact_reference"))
+    return bool(honeypot)
 
 # -----------------------------------------------------------------------------
 # ROUTES
