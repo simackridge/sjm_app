@@ -16,6 +16,9 @@
           <div><strong>Name:</strong> {{ signup.full_name }}</div>
           <div><strong>Email:</strong> {{ signup.email }}</div>
           <div><strong>Phone:</strong> {{ signup.phone or "-" }}</div>
+          <div><strong>Address:</strong> {{ signup.address_line_1 }}</div>
+          <div><strong>Town / City:</strong> {{ signup.city }}</div>
+          <div><strong>Postcode:</strong> {{ signup.postcode }}</div>
           <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
           <div><strong>Monthly price:</strong> £{{ signup.monthly_price }}</div>
           <div><strong>Payment status:</strong> {{ signup.payment_status or "Pending" }}</div>

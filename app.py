@@ -7,16 +7,21 @@ from flask import (
     flash,
     session,
     send_from_directory,
+    Response,
 )
 from datetime import datetime, UTC
 import os
+import csv
+import io
 from functools import wraps
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 import resend
 import stripe
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import requests
 
 # -----------------------------------------------------------------------------
 # INIT
@@ -41,7 +46,6 @@ COMPANY_PHONE = os.environ.get("COMPANY_PHONE", "")
 COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "")
 COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
-
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
@@ -118,14 +122,15 @@ def login_required(func):
     return wrapper
 
 def safe_success_url():
-    return STRIPE_SUCCESS_URL or (url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}")
+    return STRIPE_SUCCESS_URL or (
+        url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}"
+    )
 
 def safe_cancel_url():
     return STRIPE_CANCEL_URL or url_for("stripe_cancel", _external=True)
 
 def validate_required_env():
     missing = []
-
     required = {
         "DB_NAME": DB_NAME,
         "DB_USER": DB_USER,
@@ -134,15 +139,30 @@ def validate_required_env():
         "DB_PORT": DB_PORT,
         "STRIPE_SECRET_KEY": os.environ.get("STRIPE_SECRET_KEY"),
     }
-
     for key, value in required.items():
         if not value:
             missing.append(key)
-
     return missing
 
 def docs_file_exists(filename):
     return os.path.exists(os.path.join(DOCS_DIR, filename))
+
+def build_full_address(row):
+    parts = [
+        row.get("address_line_1"),
+        row.get("address_line_2"),
+        row.get("city"),
+        row.get("postcode"),
+    ]
+    return ", ".join([p for p in parts if p])
+
+def build_maps_link(row):
+    address = build_full_address(row)
+    return f"https://www.google.com/maps/search/?api=1&query={quote_plus(address)}"
+
+def build_directions_link(row):
+    address = build_full_address(row)
+    return f"https://www.google.com/maps/dir/?api=1&destination={quote_plus(address)}"
 
 # -----------------------------------------------------------------------------
 # ROUTES
@@ -192,6 +212,38 @@ def health():
     return {"status": "ok"}, 200
 
 # -----------------------------------------------------------------------------
+# POSTCODE LOOKUP
+# -----------------------------------------------------------------------------
+
+@app.route("/api/postcode-lookup")
+def postcode_lookup():
+    postcode = clean(request.args.get("postcode")).upper()
+
+    if not postcode:
+        return {"error": "No postcode provided"}, 400
+
+    try:
+        response = requests.get(
+            f"https://api.postcodes.io/postcodes/{quote_plus(postcode)}",
+            timeout=10,
+        )
+        data = response.json()
+
+        if response.status_code != 200 or data.get("status") != 200:
+            return {"error": "Invalid postcode"}, 400
+
+        result = data.get("result", {}) or {}
+
+        return {
+            "postcode": result.get("postcode", postcode),
+            "city": result.get("admin_district") or result.get("admin_ward") or "",
+            "region": result.get("region") or "",
+            "country": result.get("country") or "",
+        }
+    except Exception:
+        return {"error": "Lookup failed"}, 500
+
+# -----------------------------------------------------------------------------
 # SIGNUP -> STRIPE
 # -----------------------------------------------------------------------------
 
@@ -206,14 +258,19 @@ def submit():
     email = clean(request.form.get("email"))
     phone = clean(request.form.get("phone"))
 
+    address_line_1 = clean(request.form.get("address_line_1"))
+    address_line_2 = clean(request.form.get("address_line_2"))
+    city = clean(request.form.get("city"))
+    postcode = clean(request.form.get("postcode")).upper()
+
     plan = clean(request.form.get("selected_plan"))
     broken = clean(request.form.get("boiler_broken"))
     under3 = clean(request.form.get("boiler_under_3_years"))
     warranty = clean(request.form.get("boiler_warranty_valid"))
     fix_join = clean(request.form.get("fix_and_join"))
 
-    if not name or not email or not plan:
-        flash("Please complete the required fields.", "error")
+    if not name or not email or not address_line_1 or not city or not postcode or not plan:
+        flash("Please complete all required fields.", "error")
         return redirect(url_for("signup"))
 
     if plan not in PLAN_PRICES:
@@ -230,7 +287,10 @@ def submit():
             return redirect(url_for("signup"))
 
         if not (under3 == "Yes" or warranty == "Yes"):
-            flash("Essential requires the boiler to be under 3 years old or under warranty.", "error")
+            flash(
+                "Essential requires the boiler to be under 3 years old or under warranty.",
+                "error",
+            )
             return redirect(url_for("signup"))
 
     if broken == "Yes":
@@ -239,32 +299,49 @@ def submit():
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
+            now = datetime.now(UTC)
             cur.execute(
                 """
                 INSERT INTO signups (
                     full_name,
                     email,
                     phone,
+                    address_line_1,
+                    address_line_2,
+                    city,
+                    postcode,
                     selected_plan,
                     monthly_price,
                     boiler_broken,
+                    boiler_under_3_years,
+                    boiler_warranty_valid,
                     fix_and_join,
+                    status,
                     payment_status,
-                    created_at
+                    created_at,
+                    updated_at
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id
                 """,
                 (
                     name,
                     email,
                     phone,
+                    address_line_1,
+                    address_line_2,
+                    city,
+                    postcode,
                     plan,
                     PLAN_PRICES[plan],
                     broken,
+                    under3,
+                    warranty,
                     fix_join,
+                    "New",
                     "Not sent",
-                    datetime.now(UTC),
+                    now,
+                    now,
                 ),
             )
             signup_id = cur.fetchone()["id"]
@@ -284,6 +361,7 @@ def submit():
             ],
             success_url=safe_success_url(),
             cancel_url=safe_cancel_url(),
+            customer_email=email,
             metadata={"signup_id": str(signup_id)},
         )
     except Exception as e:
@@ -293,10 +371,11 @@ def submit():
                 cur.execute(
                     """
                     UPDATE signups
-                    SET payment_status='Failed'
+                    SET payment_status='Failed',
+                        updated_at=%s
                     WHERE id=%s
                     """,
-                    (signup_id,),
+                    (datetime.now(UTC), signup_id),
                 )
             conn.commit()
         finally:
@@ -311,10 +390,12 @@ def submit():
             cur.execute(
                 """
                 UPDATE signups
-                SET stripe_checkout_url=%s, payment_status='Link sent'
+                SET stripe_checkout_url=%s,
+                    payment_status='Link sent',
+                    updated_at=%s
                 WHERE id=%s
                 """,
-                (checkout_session.url, signup_id),
+                (checkout_session.url, datetime.now(UTC), signup_id),
             )
         conn.commit()
     finally:
@@ -347,10 +428,11 @@ def stripe_success():
                 cur.execute(
                     """
                     UPDATE signups
-                    SET payment_status='Paid'
+                    SET payment_status='Paid',
+                        updated_at=%s
                     WHERE id=%s
                     """,
-                    (signup_id,),
+                    (datetime.now(UTC), signup_id),
                 )
             conn.commit()
         finally:
@@ -363,7 +445,7 @@ def stripe_cancel():
     return render_template("stripe_cancel.html")
 
 # -----------------------------------------------------------------------------
-# ADMIN LOGIN / LOGOUT
+# ADMIN
 # -----------------------------------------------------------------------------
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -374,7 +456,6 @@ def admin_login():
             flash("Logged in successfully.", "success")
             return redirect(url_for("admin"))
         flash("Wrong password", "error")
-
     return render_template("admin_login.html")
 
 @app.route("/admin/logout")
@@ -382,10 +463,6 @@ def admin_logout():
     session.clear()
     flash("Logged out successfully.", "success")
     return redirect(url_for("admin_login"))
-
-# -----------------------------------------------------------------------------
-# ADMIN DASHBOARD
-# -----------------------------------------------------------------------------
 
 @app.route("/admin")
 @login_required
@@ -410,11 +487,14 @@ def admin():
         "conversion": round((paid / total) * 100, 1) if total else 0,
     }
 
-    return render_template("admin.html", signups=rows, stats=stats)
-
-# -----------------------------------------------------------------------------
-# RESEND PAYMENT LINK
-# -----------------------------------------------------------------------------
+    return render_template(
+        "admin.html",
+        signups=rows,
+        stats=stats,
+        build_maps_link=build_maps_link,
+        build_directions_link=build_directions_link,
+        build_full_address=build_full_address,
+    )
 
 @app.route("/admin/resend/<int:id>", methods=["POST"])
 @login_required
@@ -451,6 +531,7 @@ def resend_payment(id):
             ],
             success_url=safe_success_url(),
             cancel_url=safe_cancel_url(),
+            customer_email=row.get("email") or None,
             metadata={"signup_id": str(id)},
         )
 
@@ -458,10 +539,12 @@ def resend_payment(id):
             cur.execute(
                 """
                 UPDATE signups
-                SET stripe_checkout_url=%s, payment_status='Link sent'
+                SET stripe_checkout_url=%s,
+                    payment_status='Link sent',
+                    updated_at=%s
                 WHERE id=%s
                 """,
-                (checkout_session.url, id),
+                (checkout_session.url, datetime.now(UTC), id),
             )
         conn.commit()
     finally:
@@ -469,6 +552,69 @@ def resend_payment(id):
 
     flash("Payment link resent.", "success")
     return redirect(url_for("admin"))
+
+@app.route("/admin/export.csv")
+@login_required
+def export_csv():
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM signups ORDER BY id DESC")
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "ID",
+        "Created At",
+        "Updated At",
+        "Full Name",
+        "Email",
+        "Phone",
+        "Address Line 1",
+        "Address Line 2",
+        "City",
+        "Postcode",
+        "Selected Plan",
+        "Monthly Price",
+        "Boiler Broken",
+        "Boiler Under 3 Years",
+        "Boiler Warranty Valid",
+        "Fix And Join",
+        "Status",
+        "Payment Status",
+        "Stripe Checkout URL",
+    ])
+
+    for row in rows:
+        writer.writerow([
+            row.get("id"),
+            row.get("created_at"),
+            row.get("updated_at"),
+            row.get("full_name"),
+            row.get("email"),
+            row.get("phone"),
+            row.get("address_line_1"),
+            row.get("address_line_2"),
+            row.get("city"),
+            row.get("postcode"),
+            row.get("selected_plan"),
+            row.get("monthly_price"),
+            row.get("boiler_broken"),
+            row.get("boiler_under_3_years"),
+            row.get("boiler_warranty_valid"),
+            row.get("fix_and_join"),
+            row.get("status"),
+            row.get("payment_status"),
+            row.get("stripe_checkout_url"),
+        ])
+
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=sjm_signups.csv"
+    return response
 
 # -----------------------------------------------------------------------------
 # ERROR PAGES

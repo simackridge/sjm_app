@@ -26,6 +26,29 @@
     </div>
 
     <div class="field">
+      <label for="postcode">Postcode *</label>
+      <div class="postcode-row">
+        <input type="text" id="postcode" name="postcode" required>
+        <button type="button" class="btn btn-secondary btn-small" onclick="lookupPostcode()">Lookup</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="city">Town / City *</label>
+      <input type="text" id="city" name="city" required>
+    </div>
+
+    <div class="field full">
+      <label for="address_line_1">Address line 1 *</label>
+      <input type="text" id="address_line_1" name="address_line_1" required>
+    </div>
+
+    <div class="field full">
+      <label for="address_line_2">Address line 2</label>
+      <input type="text" id="address_line_2" name="address_line_2">
+    </div>
+
+    <div class="field">
       <label for="selected_plan">Choose your plan *</label>
       <select id="selected_plan" name="selected_plan" required>
         <option value="">Please choose</option>
@@ -84,4 +107,34 @@
     </div>
   </form>
 </div>
+
+<script>
+async function lookupPostcode() {
+  const postcodeInput = document.getElementById("postcode");
+  const cityInput = document.getElementById("city");
+  const postcode = postcodeInput.value.trim();
+
+  if (!postcode) {
+    alert("Please enter a postcode first.");
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/postcode-lookup?postcode=${encodeURIComponent(postcode)}`);
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      alert(data.error || "Postcode lookup failed.");
+      return;
+    }
+
+    postcodeInput.value = data.postcode || postcode.toUpperCase();
+    if (!cityInput.value && data.city) {
+      cityInput.value = data.city;
+    }
+  } catch (error) {
+    alert("Postcode lookup failed.");
+  }
+}
+</script>
 {% endblock %}
