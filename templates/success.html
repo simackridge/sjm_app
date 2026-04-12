@@ -4,39 +4,53 @@
 
 {% block content %}
 <section class="page-header">
-  <h1>You're All Set ✅</h1>
-  <p>Your service plan has been successfully set up.</p>
+  <h1>Thanks — your signup is complete</h1>
+  <p>Your payment has been received and your service plan application is now with us.</p>
 </section>
 
 <div class="card success-card">
+  {% if signup %}
+    <div class="summary-card">
+      <h2>Your details</h2>
 
-  <p>
-    Thanks for joining {{ company_name }} — we’ve received your details and payment.
-  </p>
-
-  <div class="summary-card">
-    {% if signup %}
       <div class="summary-grid">
-        <div><strong>Name:</strong> {{ signup.full_name }}</div>
-        <div><strong>Email:</strong> {{ signup.email }}</div>
-        <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
-        <div><strong>Monthly:</strong> £{{ signup.monthly_price }}</div>
+        <div><strong>Name:</strong> {{ signup.full_name or "-" }}</div>
+        <div><strong>Email:</strong> {{ signup.email or "-" }}</div>
+        <div><strong>Phone:</strong> {{ signup.phone or "-" }}</div>
+        <div><strong>Plan:</strong> {{ signup.selected_plan or "-" }}</div>
+
+        <div><strong>Monthly price:</strong> £{{ signup.monthly_price or "-" }}</div>
+        <div><strong>Payment status:</strong> {{ signup.payment_status or "-" }}</div>
+
+        <div><strong>Address:</strong> {{ signup.address_line_1 or "-" }}</div>
+        <div><strong>Town / City:</strong> {{ signup.city or "-" }}</div>
+
+        {% if signup.address_line_2 %}
+          <div><strong>Address line 2:</strong> {{ signup.address_line_2 }}</div>
+        {% endif %}
+
+        <div><strong>Postcode:</strong> {{ signup.postcode or "-" }}</div>
+
+        <div><strong>Boiler broken:</strong> {{ signup.boiler_broken or "-" }}</div>
+        <div><strong>Fix &amp; Join:</strong> {{ signup.fix_and_join or "No" }}</div>
 
         {% if signup.fix_and_join == "Yes" %}
-          <div><strong>Fix & Join:</strong> Yes</div>
-          <div><strong>Fee:</strong> £{{ signup.fix_and_join_fee }}</div>
+          <div><strong>Fix &amp; Join fee:</strong> £{{ signup.fix_and_join_fee or fix_and_join_fee }}</div>
+          <div><strong>Important:</strong> Subject to inspection and suitability</div>
         {% endif %}
       </div>
-    {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="note-box">
+    <strong>What happens next:</strong><br>
+    We’ll review your signup and send your agreement by email. If your plan includes Fix &amp; Join,
+    we’ll confirm the next steps for inspection and repair.
   </div>
 
-  <p>
-    📞 We’ll be in touch shortly to confirm everything and arrange any next steps.
-  </p>
-
-  <a href="{{ url_for('index') }}" class="btn btn-primary">
-    Back to Home
-  </a>
-
+  <div class="hero-actions" style="margin-top: 20px;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">Back to home</a>
+    <a href="{{ url_for('signup') }}" class="btn btn-secondary">Start another signup</a>
+  </div>
 </div>
 {% endblock %}

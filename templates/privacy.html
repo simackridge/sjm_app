@@ -1,27 +1,79 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Privacy{% endblock %}
+{% block title %}{{ company_name }} | Privacy Policy{% endblock %}
 
 {% block content %}
 <section class="page-header">
   <h1>Privacy Policy</h1>
-  <p>This page is shown when the PDF version is not available.</p>
+  <p>How we collect, use, and protect your information.</p>
 </section>
 
-<div class="card legal-card">
-  <h2>How we use your data</h2>
+<div class="card">
+  <h2>1. Introduction</h2>
   <p>
-    This is a fallback version for your website. Replace this with your final privacy wording or upload the PDF into
-    <code>static/docs/sjm_privacy_policy_v1.pdf</code>.
+    {{ company_name }} is committed to protecting your privacy. This policy explains how we collect,
+    use, and store your personal data when you use our services.
   </p>
 
-  <h3>What we collect</h3>
-  <p>We may collect your name, email address, phone number, address details, and service plan information.</p>
+  <h2>2. What We Collect</h2>
+  <p>We may collect the following information:</p>
+  <ul>
+    <li>Full name</li>
+    <li>Email address</li>
+    <li>Phone number</li>
+    <li>Property address</li>
+    <li>Boiler and system details</li>
+    <li>Digital signature and agreement acceptance</li>
+  </ul>
 
-  <h3>Why we collect it</h3>
-  <p>We use this information to manage service plans, collect payments, and support customers.</p>
+  <h2>3. How We Use Your Data</h2>
+  <p>Your data is used to:</p>
+  <ul>
+    <li>Set up and manage your service plan</li>
+    <li>Arrange service visits and support</li>
+    <li>Send confirmations and important updates</li>
+    <li>Meet legal and compliance requirements</li>
+  </ul>
 
-  <h3>Sharing data</h3>
-  <p>We only share information where needed for payment processing, service delivery, or legal compliance.</p>
+  <h2>4. Payments</h2>
+  <p>
+    Payments are processed securely via third-party providers (such as Stripe). We do not store
+    your full payment details on our systems.
+  </p>
+
+  <h2>5. Data Storage</h2>
+  <p>
+    Your data is stored securely and only accessible to authorised personnel. We take appropriate
+    technical measures to protect your information.
+  </p>
+
+  <h2>6. Sharing Your Data</h2>
+  <p>
+    We do not sell your data. Your information may only be shared where necessary to deliver
+    services or comply with legal obligations.
+  </p>
+
+  <h2>7. Your Rights</h2>
+  <p>You have the right to:</p>
+  <ul>
+    <li>Request access to your data</li>
+    <li>Request correction of incorrect data</li>
+    <li>Request deletion of your data (where applicable)</li>
+  </ul>
+
+  <h2>8. Contact</h2>
+  <p>
+    If you have any questions about this policy or your data, contact us:
+  </p>
+
+  <p>
+    <strong>{{ company_name }}</strong><br>
+    Phone: {{ company_phone }}<br>
+    Email: {{ company_email }}
+  </p>
+
+  <div class="note-box">
+    Version: {{ privacy_version }}
+  </div>
 </div>
 {% endblock %}

@@ -1,30 +1,76 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Terms{% endblock %}
+{% block title %}{{ company_name }} | Terms & Conditions{% endblock %}
 
 {% block content %}
 <section class="page-header">
-  <h1>Terms and Conditions</h1>
-  <p>This page is shown when the PDF version is not available.</p>
+  <h1>Terms & Conditions</h1>
+  <p>Please read these terms carefully before proceeding.</p>
 </section>
 
-<div class="card legal-card">
-  <h2>Service plan terms</h2>
+<div class="card">
+  <h2>1. Service Agreement</h2>
   <p>
-    This is a fallback version for your website. Replace this with your final legal wording or upload the PDF into
-    <code>static/docs/sjm_service_plan_terms_v1.pdf</code>.
+    By signing up to a service plan with {{ company_name }}, you agree to receive
+    the services outlined within your selected plan. All services are subject to
+    availability and suitability.
   </p>
 
-  <h3>General</h3>
-  <p>Service plans are subject to acceptance, appliance suitability, and any inspection requirements.</p>
+  <h2>2. Payments</h2>
+  <p>
+    Monthly payments are collected via secure payment providers. Failure to make
+    payment may result in suspension or cancellation of your plan.
+  </p>
 
-  <h3>Eligibility</h3>
-  <p>Essential is only available where the boiler is not broken and is under 3 years old or under a valid warranty.</p>
+  <h2>3. Fix & Join</h2>
+  <p>
+    Where applicable, the Fix & Join option includes an initial visit to diagnose
+    and attempt repair of your heating system.
+  </p>
 
-  <h3>Payments</h3>
-  <p>Monthly subscriptions are collected securely online. Failed payments may affect cover status.</p>
+  <div class="note-box">
+    <strong>Important:</strong><br>
+    Fix & Join is subject to inspection, system condition, and suitability.
+    Payment of the fee does not guarantee repair.
+  </div>
 
-  <h3>Fair usage</h3>
-  <p>Fair usage applies. Pre-existing faults, excluded parts, and out-of-scope issues may not be included.</p>
+  <h2>4. Coverage Limitations</h2>
+  <p>
+    Coverage is limited to the terms of the selected plan. Pre-existing faults,
+    system neglect, or non-compliant installations may not be covered.
+  </p>
+
+  <h2>5. Access</h2>
+  <p>
+    Customers must provide safe and reasonable access to the property for any
+    scheduled work or inspections.
+  </p>
+
+  <h2>6. Liability</h2>
+  <p>
+    {{ company_name }} shall not be liable for indirect or consequential losses.
+    All work is carried out with reasonable care and skill.
+  </p>
+
+  <h2>7. Cancellation</h2>
+  <p>
+    Cancellation terms depend on your agreement and timing. Please contact us
+    directly for support with cancellations.
+  </p>
+
+  <h2>8. Contact</h2>
+  <p>
+    For any queries regarding these terms, please contact:
+  </p>
+
+  <p>
+    <strong>{{ company_name }}</strong><br>
+    Phone: {{ company_phone }}<br>
+    Email: {{ company_email }}
+  </p>
+
+  <div class="note-box">
+    Version: {{ terms_version }}
+  </div>
 </div>
 {% endblock %}

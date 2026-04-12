@@ -13,14 +13,21 @@ from datetime import datetime, UTC
 import os
 import csv
 import io
+import base64
+import tempfile
 from functools import wraps
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 import stripe
+import resend
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as pdf_canvas
 
 # -----------------------------------------------------------------------------
 # INIT
@@ -34,6 +41,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this")
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DOCS_DIR = os.path.join(STATIC_DIR, "docs")
+LOGO_PATH = os.path.join(STATIC_DIR, "logo.png")
 
 # -----------------------------------------------------------------------------
 # CONFIG
@@ -46,6 +54,10 @@ COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "info@sjmheating.co.uk")
 COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", COMPANY_EMAIL)
+
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", COMPANY_EMAIL)
+resend.api_key = os.environ.get("RESEND_API_KEY")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
@@ -71,8 +83,8 @@ PLAN_PRICES = {
 }
 
 FIX_AND_JOIN_FEE = "240.99"
-TERMS_VERSION = "v1.0"
-PRIVACY_VERSION = "v1.0"
+TERMS_VERSION = os.environ.get("TERMS_VERSION", "v1.0")
+PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
@@ -196,6 +208,357 @@ def looks_like_bot_submission(form):
     honeypot = clean(form.get("contact_reference"))
     return bool(honeypot)
 
+
+def fetch_signup(signup_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM signups WHERE id=%s", (signup_id,))
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def update_signup_email_status(signup_id, customer_sent=None, admin_sent=None):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            if customer_sent is not None:
+                cur.execute(
+                    """
+                    UPDATE signups
+                    SET customer_email_sent=%s, updated_at=%s
+                    WHERE id=%s
+                    """,
+                    (customer_sent, datetime.now(UTC), signup_id),
+                )
+            if admin_sent is not None:
+                cur.execute(
+                    """
+                    UPDATE signups
+                    SET admin_email_sent=%s, updated_at=%s
+                    WHERE id=%s
+                    """,
+                    (admin_sent, datetime.now(UTC), signup_id),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def ensure_email_columns():
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                ALTER TABLE signups
+                ADD COLUMN IF NOT EXISTS customer_email_sent BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS admin_email_sent BOOLEAN DEFAULT FALSE
+                """
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+# -----------------------------------------------------------------------------
+# PDF GENERATION
+# -----------------------------------------------------------------------------
+
+def draw_wrapped_text(pdf, text, x, y, max_width, line_height=14, font_name="Helvetica", font_size=10):
+    pdf.setFont(font_name, font_size)
+    words = (text or "").split()
+    if not words:
+        return y
+
+    line = ""
+    for word in words:
+        test_line = f"{line} {word}".strip()
+        if pdf.stringWidth(test_line, font_name, font_size) <= max_width:
+            line = test_line
+        else:
+            pdf.drawString(x, y, line)
+            y -= line_height
+            line = word
+
+    if line:
+        pdf.drawString(x, y, line)
+        y -= line_height
+
+    return y
+
+
+def decode_signature_to_tempfile(signature_data):
+    if not signature_data or "," not in signature_data:
+        return None
+
+    try:
+        header, encoded = signature_data.split(",", 1)
+        image_bytes = base64.b64decode(encoded)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        tmp.write(image_bytes)
+        tmp.flush()
+        tmp.close()
+        return tmp.name
+    except Exception:
+        return None
+
+
+def build_contract_pdf_bytes(signup):
+    buffer = io.BytesIO()
+    pdf = pdf_canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    margin = 40
+    y = height - 40
+
+    # Logo
+    if os.path.exists(LOGO_PATH):
+        try:
+            pdf.drawImage(LOGO_PATH, margin, y - 40, width=90, height=40, preserveAspectRatio=True, mask="auto")
+        except Exception:
+            pass
+
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawRightString(width - margin, y - 10, "Service Plan Agreement")
+
+    y -= 65
+
+    # Company block
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(margin, y, COMPANY_NAME)
+    y -= 14
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin, y, f"Company Reg: {COMPANY_REG}")
+    y -= 14
+    pdf.drawString(margin, y, f"Phone: {COMPANY_PHONE}")
+    y -= 14
+    pdf.drawString(margin, y, f"Email: {COMPANY_EMAIL}")
+    y -= 24
+
+    # Agreement summary
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(margin, y, "Customer Details")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin, y, f"Name: {signup.get('full_name') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Email: {signup.get('email') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Phone: {signup.get('phone') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Address: {build_full_address(signup) or '-'}")
+    y -= 24
+
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(margin, y, "Plan Details")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin, y, f"Selected Plan: {signup.get('selected_plan') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Monthly Price: £{signup.get('monthly_price') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Boiler Broken: {signup.get('boiler_broken') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Boiler Under 3 Years: {signup.get('boiler_under_3_years') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Warranty Valid: {signup.get('boiler_warranty_valid') or '-'}")
+    y -= 14
+    pdf.drawString(margin, y, f"Fix & Join: {signup.get('fix_and_join') or 'No'}")
+    y -= 14
+    if signup.get("fix_and_join") == "Yes":
+        pdf.drawString(margin, y, f"Fix & Join Fee: £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}")
+        y -= 18
+        y = draw_wrapped_text(
+            pdf,
+            "Fix & Join is subject to inspection, diagnosis and suitability and does not guarantee full repair within the initial fee.",
+            margin,
+            y,
+            width - (margin * 2),
+            line_height=14,
+        )
+        y -= 6
+    else:
+        y -= 10
+
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(margin, y, "Legal Acceptance")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin, y, f"Terms Accepted: {'Yes' if signup.get('accepted_terms') else 'No'} ({TERMS_VERSION})")
+    y -= 14
+    pdf.drawString(margin, y, f"Privacy Accepted: {'Yes' if signup.get('accepted_privacy') else 'No'} ({PRIVACY_VERSION})")
+    y -= 14
+    pdf.drawString(margin, y, f"Fair Usage Accepted: {'Yes' if signup.get('accepted_fair_usage') else 'No'}")
+    y -= 24
+
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(margin, y, "Agreement")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    agreement_text = (
+        "Submitting this signed form confirms the customer has applied for the selected service plan, "
+        "accepted the Terms and Conditions and Privacy Policy, and understands any Fix & Join work is "
+        "subject to inspection and suitability."
+    )
+    y = draw_wrapped_text(pdf, agreement_text, margin, y, width - (margin * 2))
+    y -= 10
+
+    # Signature block
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(margin, y, "Customer Signature")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(margin, y, f"Typed Name: {signup.get('signature_name') or '-'}")
+    y -= 18
+
+    sig_path = decode_signature_to_tempfile(signup.get("signature_data"))
+    if sig_path and os.path.exists(sig_path):
+        try:
+            pdf.drawImage(sig_path, margin, y - 60, width=160, height=60, preserveAspectRatio=True, mask="auto")
+            y -= 70
+        except Exception:
+            pdf.drawString(margin, y, "Signature image could not be rendered.")
+            y -= 14
+        finally:
+            try:
+                os.unlink(sig_path)
+            except Exception:
+                pass
+    else:
+        pdf.drawString(margin, y, "No drawn signature available.")
+        y -= 14
+
+    pdf.drawString(margin, y, f"Signed At: {signup.get('created_at') or datetime.now(UTC)}")
+    y -= 14
+    pdf.drawString(margin, y, f"Generated By: {COMPANY_NAME}")
+    y -= 24
+
+    pdf.setFont("Helvetica", 9)
+    footer = f"{COMPANY_NAME} | {COMPANY_PHONE} | {COMPANY_EMAIL}"
+    pdf.drawString(margin, 20, footer)
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer.read()
+
+# -----------------------------------------------------------------------------
+# EMAIL
+# -----------------------------------------------------------------------------
+
+def send_customer_confirmation_email(signup, pdf_bytes):
+    if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email"):
+        return False
+
+    subject = f"Your {COMPANY_NAME} Service Plan Confirmation"
+    fix_join_html = ""
+    if signup.get("fix_and_join") == "Yes":
+        fix_join_html = f"""
+        <p><strong>Fix &amp; Join applies:</strong> A one-off fee of £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}
+        applies and work remains subject to inspection and suitability.</p>
+        """
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
+      <h2>Thank you for choosing {COMPANY_NAME}</h2>
+      <p>Your service plan signup and payment have been received.</p>
+
+      <p><strong>Customer:</strong> {signup.get('full_name') or '-'}</p>
+      <p><strong>Plan:</strong> {signup.get('selected_plan') or '-'} - £{signup.get('monthly_price') or '-'} / month</p>
+      {fix_join_html}
+
+      <p>Your signed agreement is attached as a PDF.</p>
+
+      <p><strong>What happens next:</strong></p>
+      <ul>
+        <li>We review your application</li>
+        <li>We contact you if anything else is needed</li>
+        <li>Your cover proceeds in line with the agreed terms</li>
+      </ul>
+
+      <p>If you need anything, reply to this email or call {COMPANY_PHONE}.</p>
+    </div>
+    """
+
+    resend.Emails.send(
+        {
+            "from": RESEND_FROM_EMAIL,
+            "to": [signup["email"]],
+            "subject": subject,
+            "html": html,
+            "attachments": [
+                {
+                    "filename": f"sjm-service-plan-{signup.get('id')}.pdf",
+                    "content": base64.b64encode(pdf_bytes).decode("utf-8"),
+                }
+            ],
+        }
+    )
+    return True
+
+
+def send_admin_notification_email(signup, pdf_bytes):
+    if not resend.api_key or not RESEND_FROM_EMAIL or not ADMIN_NOTIFICATION_EMAIL:
+        return False
+
+    subject = f"New Service Plan Signup - {signup.get('full_name') or 'Customer'}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
+      <h2>New service plan signup received</h2>
+
+      <p><strong>Name:</strong> {signup.get('full_name') or '-'}</p>
+      <p><strong>Email:</strong> {signup.get('email') or '-'}</p>
+      <p><strong>Phone:</strong> {signup.get('phone') or '-'}</p>
+      <p><strong>Address:</strong> {build_full_address(signup) or '-'}</p>
+
+      <p><strong>Plan:</strong> {signup.get('selected_plan') or '-'} - £{signup.get('monthly_price') or '-'}/month</p>
+      <p><strong>Boiler Broken:</strong> {signup.get('boiler_broken') or '-'}</p>
+      <p><strong>Fix &amp; Join:</strong> {signup.get('fix_and_join') or 'No'}</p>
+      <p><strong>Fix &amp; Join Fee:</strong> £{signup.get('fix_and_join_fee') or '-'}</p>
+
+      <p>The signed agreement PDF is attached.</p>
+    </div>
+    """
+
+    resend.Emails.send(
+        {
+            "from": RESEND_FROM_EMAIL,
+            "to": [ADMIN_NOTIFICATION_EMAIL],
+            "subject": subject,
+            "html": html,
+            "attachments": [
+                {
+                    "filename": f"sjm-service-plan-{signup.get('id')}.pdf",
+                    "content": base64.b64encode(pdf_bytes).decode("utf-8"),
+                }
+            ],
+        }
+    )
+    return True
+
+
+def send_post_payment_emails(signup_id):
+    ensure_email_columns()
+    signup = fetch_signup(signup_id)
+    if not signup:
+        return
+
+    pdf_bytes = build_contract_pdf_bytes(signup)
+
+    if not signup.get("customer_email_sent"):
+        try:
+            if send_customer_confirmation_email(signup, pdf_bytes):
+                update_signup_email_status(signup_id, customer_sent=True)
+        except Exception:
+            pass
+
+    if not signup.get("admin_email_sent"):
+        try:
+            if send_admin_notification_email(signup, pdf_bytes):
+                update_signup_email_status(signup_id, admin_sent=True)
+        except Exception:
+            pass
+
 # -----------------------------------------------------------------------------
 # ROUTES
 # -----------------------------------------------------------------------------
@@ -217,13 +580,7 @@ def success():
 
     if signup_id:
         try:
-            conn = get_db_connection()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT * FROM signups WHERE id=%s", (signup_id,))
-                    signup_row = cur.fetchone()
-            finally:
-                conn.close()
+            signup_row = fetch_signup(signup_id)
         except Exception:
             signup_row = None
 
@@ -248,9 +605,6 @@ def privacy():
 def health():
     return {"status": "ok"}, 200
 
-# -----------------------------------------------------------------------------
-# POSTCODE LOOKUP
-# -----------------------------------------------------------------------------
 
 @app.route("/api/postcode-lookup")
 def postcode_lookup():
@@ -280,9 +634,6 @@ def postcode_lookup():
     except Exception:
         return {"error": "Lookup failed"}, 500
 
-# -----------------------------------------------------------------------------
-# SIGNUP -> STRIPE
-# -----------------------------------------------------------------------------
 
 @app.route("/submit", methods=["POST"])
 def submit():
@@ -480,9 +831,6 @@ def submit():
 
     return redirect(checkout_session.url)
 
-# -----------------------------------------------------------------------------
-# STRIPE SUCCESS / CANCEL
-# -----------------------------------------------------------------------------
 
 @app.route("/stripe/success")
 def stripe_success():
@@ -515,6 +863,13 @@ def stripe_success():
         finally:
             conn.close()
 
+        try:
+            send_post_payment_emails(signup_id)
+        except Exception:
+            pass
+
+        return redirect(url_for("success", signup_id=signup_id))
+
     return render_template("stripe_success.html")
 
 
@@ -522,9 +877,6 @@ def stripe_success():
 def stripe_cancel():
     return render_template("stripe_cancel.html")
 
-# -----------------------------------------------------------------------------
-# ADMIN
-# -----------------------------------------------------------------------------
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
@@ -547,6 +899,8 @@ def admin_logout():
 @app.route("/admin")
 @login_required
 def admin():
+    ensure_email_columns()
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -643,6 +997,8 @@ def resend_payment(id):
 @app.route("/admin/export.csv")
 @login_required
 def export_csv():
+    ensure_email_columns()
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -679,6 +1035,8 @@ def export_csv():
         "Accepted Fair Usage",
         "Status",
         "Payment Status",
+        "Customer Email Sent",
+        "Admin Email Sent",
         "Stripe Checkout URL",
     ])
 
@@ -708,6 +1066,8 @@ def export_csv():
             row.get("accepted_fair_usage"),
             row.get("status"),
             row.get("payment_status"),
+            row.get("customer_email_sent"),
+            row.get("admin_email_sent"),
             row.get("stripe_checkout_url"),
         ])
 
@@ -715,9 +1075,6 @@ def export_csv():
     response.headers["Content-Disposition"] = "attachment; filename=sjm_signups.csv"
     return response
 
-# -----------------------------------------------------------------------------
-# ERROR PAGES
-# -----------------------------------------------------------------------------
 
 @app.errorhandler(404)
 def page_not_found(error):
@@ -728,9 +1085,6 @@ def page_not_found(error):
 def internal_error(error):
     return render_template("500.html"), 500
 
-# -----------------------------------------------------------------------------
-# START
-# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
