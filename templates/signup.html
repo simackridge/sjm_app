@@ -4,654 +4,170 @@
 
 {% block content %}
 <section class="page-header">
-  <h1>Join {{ company_name }} Service Plans</h1>
-  <p>Answer a few simple questions and we’ll show the right options for your boiler.</p>
+  <h1>Join an SJM Service Plan</h1>
+  <p>Follow the steps below to get covered.</p>
 </section>
 
-<div class="card flow-card">
-  <div class="flow-progress">
-    <div class="flow-progress-bar" id="flowProgressBar"></div>
+<div class="card form-card">
+<form method="POST" action="{{ url_for('submit') }}" id="signupForm">
+
+  <!-- HONEYPOT -->
+  <input type="text" name="contact_reference" style="display:none">
+
+  <!-- STEP 1 -->
+  <div class="step active" id="step1">
+    <h2>Your Details</h2>
+
+    <input name="full_name" placeholder="Full Name *" required>
+    <input name="email" placeholder="Email *" required>
+    <input name="phone" placeholder="Phone">
+
+    <button type="button" onclick="nextStep(2)">Next</button>
   </div>
 
-  <form method="POST" action="{{ url_for('submit') }}" id="signupFlowForm" novalidate>
-    <input type="hidden" name="selected_plan" id="selected_plan">
-    <input type="hidden" name="signature_data" id="signature_data">
-    <div class="honeypot-wrap" aria-hidden="true">
-      <label for="contact_reference">Leave this field empty</label>
-      <input
-        type="text"
-        id="contact_reference"
-        name="contact_reference"
-        tabindex="-1"
-        autocomplete="off"
-      >
+  <!-- STEP 2 ADDRESS -->
+  <div class="step" id="step2">
+    <h2>Your Address</h2>
+
+    <input id="postcode" name="postcode" placeholder="Postcode *" required>
+    <button type="button" onclick="lookupPostcode()">Lookup Address</button>
+
+    <input id="address1" name="address_line_1" placeholder="Address Line 1 *" required>
+    <input name="address_line_2" placeholder="Address Line 2">
+    <input id="city" name="city" placeholder="City *" required>
+
+    <button type="button" onclick="nextStep(3)">Next</button>
+  </div>
+
+  <!-- STEP 3 BOILER -->
+  <div class="step" id="step3">
+    <h2>Your Boiler</h2>
+
+    <select id="broken" name="boiler_broken" onchange="updateFlow()">
+      <option value="">Is your boiler broken? *</option>
+      <option value="No">No</option>
+      <option value="Yes">Yes</option>
+    </select>
+
+    <div id="extraQuestions">
+      <select id="under3" name="boiler_under_3_years">
+        <option value="">Under 3 years old?</option>
+        <option>Yes</option>
+        <option>No</option>
+      </select>
+
+      <select id="warranty" name="boiler_warranty_valid">
+        <option value="">Still under warranty?</option>
+        <option>Yes</option>
+        <option>No</option>
+      </select>
     </div>
 
-    <div class="flow-step active" data-step="1">
-      <span class="step-kicker">Step 1</span>
-      <h2>Your details</h2>
-      <p class="step-text">Let’s start with your contact details.</p>
+    <button type="button" onclick="nextStep(4)">Next</button>
+  </div>
 
-      <div class="form-grid">
-        <div class="field full">
-          <label for="full_name">Full name *</label>
-          <input type="text" id="full_name" name="full_name" required>
-        </div>
+  <!-- STEP 4 PLAN -->
+  <div class="step" id="step4">
+    <h2>Select Plan</h2>
 
-        <div class="field">
-          <label for="email">Email address *</label>
-          <input type="email" id="email" name="email" required>
-        </div>
+    <select id="plan" name="selected_plan" required></select>
 
-        <div class="field">
-          <label for="phone">Phone number</label>
-          <input type="text" id="phone" name="phone">
-        </div>
-      </div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-primary" onclick="nextStep(1)">Continue</button>
-      </div>
+    <div id="fixJoinBox" class="note-box" style="display:none;">
+      ⚠️ Your boiler is broken — Fix & Join fee of £{{ fix_and_join_fee }} applies.
     </div>
 
-    <div class="flow-step" data-step="2">
-      <span class="step-kicker">Step 2</span>
-      <h2>Your address</h2>
-      <p class="step-text">Use postcode lookup, then fill in the property address.</p>
+    <button type="button" onclick="nextStep(5)">Next</button>
+  </div>
 
-      <div class="form-grid">
-        <div class="field">
-          <label for="postcode">Postcode *</label>
-          <div class="postcode-row">
-            <input type="text" id="postcode" name="postcode" required>
-            <button type="button" class="btn btn-secondary btn-small" onclick="lookupPostcode()">Lookup</button>
-          </div>
-        </div>
+  <!-- STEP 5 SIGNATURE -->
+  <div class="step" id="step5">
+    <h2>Agreement</h2>
 
-        <div class="field">
-          <label for="city">Town / City *</label>
-          <input type="text" id="city" name="city" required>
-        </div>
+    <input name="signature_name" placeholder="Type your full name *" required>
 
-        <div class="field full">
-          <label for="address_line_1">Address line 1 *</label>
-          <input type="text" id="address_line_1" name="address_line_1" required>
-        </div>
+    <p>Draw your signature:</p>
+    <canvas id="signaturePad" width="300" height="150"></canvas>
+    <input type="hidden" name="signature_data" id="signatureData">
 
-        <div class="field full">
-          <label for="address_line_2">Address line 2</label>
-          <input type="text" id="address_line_2" name="address_line_2">
-        </div>
-      </div>
+    <div class="checkboxes">
+      <label>
+        <input type="checkbox" name="accepted_terms" required>
+        I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
+      </label>
 
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(2)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="nextStep(2)">Continue</button>
-      </div>
+      <label>
+        <input type="checkbox" name="accepted_privacy" required>
+        I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a>
+      </label>
+
+      <label>
+        <input type="checkbox" name="accepted_fair_usage" required>
+        I accept the Fair Usage Policy
+      </label>
     </div>
 
-    <div class="flow-step" data-step="3">
-      <span class="step-kicker">Step 3</span>
-      <h2>Is your boiler currently broken?</h2>
-      <p class="step-text">This decides which questions and plans come next.</p>
+    <button type="submit">Continue to Payment</button>
+  </div>
 
-      <div class="choice-grid">
-        <label class="choice-card">
-          <input type="radio" name="boiler_broken" value="No">
-          <span>No</span>
-        </label>
-        <label class="choice-card">
-          <input type="radio" name="boiler_broken" value="Yes">
-          <span>Yes</span>
-        </label>
-      </div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(3)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="handleBrokenStep()">Continue</button>
-      </div>
-    </div>
-
-    <div class="flow-step" data-step="4">
-      <span class="step-kicker">Step 4</span>
-      <h2>Is the boiler under 3 years old?</h2>
-
-      <div class="choice-grid">
-        <label class="choice-card">
-          <input type="radio" name="boiler_under_3_years" value="Yes">
-          <span>Yes</span>
-        </label>
-        <label class="choice-card">
-          <input type="radio" name="boiler_under_3_years" value="No">
-          <span>No</span>
-        </label>
-      </div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(4)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="nextStep(4)">Continue</button>
-      </div>
-    </div>
-
-    <div class="flow-step" data-step="5">
-      <span class="step-kicker">Step 5</span>
-      <h2>Is the boiler still under warranty?</h2>
-
-      <div class="choice-grid">
-        <label class="choice-card">
-          <input type="radio" name="boiler_warranty_valid" value="Yes">
-          <span>Yes</span>
-        </label>
-        <label class="choice-card">
-          <input type="radio" name="boiler_warranty_valid" value="No">
-          <span>No</span>
-        </label>
-      </div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(5)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="buildPlansAndGo()">Continue</button>
-      </div>
-    </div>
-
-    <div class="flow-step" data-step="6">
-      <span class="step-kicker">Step 6</span>
-      <h2>Your recommended plan options</h2>
-      <p class="step-text" id="planIntroText"></p>
-
-      <div class="fix-join-banner" id="fixJoinBanner">
-        <strong>Fix &amp; Join applies</strong><br>
-        Your boiler is currently broken, so a one-off repair and join fee of £{{ fix_and_join_fee }} applies before ongoing cover starts.
-      </div>
-
-      <div id="planOptions" class="plan-option-grid"></div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="goBackFromPlanStep()">Back</button>
-        <button type="button" class="btn btn-primary" onclick="goToReview()">Continue</button>
-      </div>
-    </div>
-
-    <div class="flow-step" data-step="7">
-      <span class="step-kicker">Step 7</span>
-      <h2>Review your details</h2>
-      <p class="step-text">Check everything looks right before you continue.</p>
-
-      <div class="review-card" id="reviewCard"></div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(7)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="goToLegal()">Continue</button>
-      </div>
-    </div>
-
-    <div class="flow-step" data-step="8">
-      <span class="step-kicker">Step 8</span>
-      <h2>Agreement and consent</h2>
-      <p class="step-text">Please sign below and confirm your agreement before continuing to secure payment.</p>
-
-      <div class="legal-panel">
-        <div class="field full">
-          <label for="signature_name">Typed signature name *</label>
-          <input type="text" id="signature_name" name="signature_name" required>
-        </div>
-
-        <div class="field full">
-          <label>Draw your signature *</label>
-          <div class="signature-pad-wrap">
-            <canvas id="signaturePad" width="820" height="240"></canvas>
-          </div>
-          <div class="signature-actions">
-            <button type="button" class="btn btn-secondary btn-small" onclick="clearSignature()">Clear signature</button>
-          </div>
-        </div>
-
-        <div class="consent-list">
-          <label class="consent-item">
-            <input type="checkbox" id="accepted_terms" name="accepted_terms">
-            <span>I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms and Conditions</a> *</span>
-          </label>
-
-          <label class="consent-item">
-            <input type="checkbox" id="accepted_privacy" name="accepted_privacy">
-            <span>I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a> *</span>
-          </label>
-
-          <label class="consent-item">
-            <input type="checkbox" id="accepted_fair_usage" name="accepted_fair_usage">
-            <span>I accept the Fair Usage Policy and understand cover is subject to fair use *</span>
-          </label>
-        </div>
-
-        <div class="note-box">
-          <strong>Declaration:</strong><br>
-          By continuing, you confirm that the information provided is correct and that your typed name and drawn signature act as your electronic signature.
-        </div>
-      </div>
-
-      <div class="flow-actions">
-        <button type="button" class="btn btn-secondary" onclick="prevStep(8)">Back</button>
-        <button type="submit" class="btn btn-primary" onclick="return validateLegalStep()">Continue to payment</button>
-      </div>
-    </div>
-  </form>
+</form>
 </div>
 
+<style>
+.step { display:none; }
+.step.active { display:block; }
+canvas { border:1px solid #ccc; margin-top:10px; }
+</style>
+
 <script>
-  const planPrices = {
-    Essential: "11.00",
-    Standard: "17.99",
-    Complete: "23.99"
-  };
+// STEP NAV
+function nextStep(step){
+  document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
+  document.getElementById('step'+step).classList.add('active');
+}
 
-  const fixAndJoinFee = "{{ fix_and_join_fee }}";
-  let currentStep = 1;
-  let previousPlanStep = 5;
+// FLOW LOGIC
+function updateFlow(){
+  let broken=document.getElementById('broken').value;
+  let plan=document.getElementById('plan');
+  let fixBox=document.getElementById('fixJoinBox');
 
-  function showStep(step) {
-    document.querySelectorAll(".flow-step").forEach(el => el.classList.remove("active"));
-    const target = document.querySelector(`.flow-step[data-step="${step}"]`);
-    if (target) {
-      target.classList.add("active");
-      currentStep = step;
-      updateProgress();
-      setTimeout(resizeSignatureCanvas, 50);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+  plan.innerHTML="";
+
+  if(broken==="Yes"){
+    plan.innerHTML='<option value=\"Standard\">Standard</option><option value=\"Complete\">Complete</option>';
+    fixBox.style.display="block";
+    document.getElementById('extraQuestions').style.display="none";
+  } else {
+    plan.innerHTML='<option value=\"Essential\">Essential</option><option value=\"Standard\">Standard</option><option value=\"Complete\">Complete</option>';
+    fixBox.style.display="none";
+    document.getElementById('extraQuestions').style.display="block";
   }
-
-  function updateProgress() {
-    const percent = (currentStep / 8) * 100;
-    document.getElementById("flowProgressBar").style.width = percent + "%";
-  }
-
-  function valueOf(id) {
-    return document.getElementById(id).value.trim();
-  }
-
-  function radioValue(name) {
-    const checked = document.querySelector(`input[name="${name}"]:checked`);
-    return checked ? checked.value : "";
-  }
-
-  function requireFields(ids, message) {
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (!el || !el.value.trim()) {
-        alert(message);
-        if (el) el.focus();
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function requireRadio(name, message) {
-    if (!radioValue(name)) {
-      alert(message);
-      return false;
-    }
-    return true;
-  }
-
-  function nextStep(step) {
-    if (step === 1) {
-      if (!requireFields(["full_name", "email"], "Please complete your name and email address.")) return;
-    }
-
-    if (step === 2) {
-      if (!requireFields(["postcode", "city", "address_line_1"], "Please complete the address fields.")) return;
-    }
-
-    if (step === 4) {
-      if (!requireRadio("boiler_under_3_years", "Please answer whether the boiler is under 3 years old.")) return;
-    }
-
-    if (step === 5) {
-      if (!requireRadio("boiler_warranty_valid", "Please answer whether the boiler is under warranty.")) return;
-    }
-
-    showStep(step + 1);
-  }
-
-  function prevStep(step) {
-    showStep(step - 1);
-  }
-
-  async function lookupPostcode() {
-    const postcodeInput = document.getElementById("postcode");
-    const cityInput = document.getElementById("city");
-    const postcode = postcodeInput.value.trim();
-
-    if (!postcode) {
-      alert("Please enter a postcode first.");
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/postcode-lookup?postcode=${encodeURIComponent(postcode)}`);
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        alert(data.error || "Postcode lookup failed.");
-        return;
-      }
-
-      postcodeInput.value = data.postcode || postcode.toUpperCase();
-      if (!cityInput.value && data.city) {
-        cityInput.value = data.city;
-      }
-    } catch (error) {
-      alert("Postcode lookup failed.");
-    }
-  }
-
-  function handleBrokenStep() {
-    if (!requireRadio("boiler_broken", "Please answer whether the boiler is currently broken.")) return;
-
-    const broken = radioValue("boiler_broken");
-
-    if (broken === "Yes") {
-      const under3Inputs = document.querySelectorAll('input[name="boiler_under_3_years"]');
-      const warrantyInputs = document.querySelectorAll('input[name="boiler_warranty_valid"]');
-      under3Inputs.forEach(i => i.checked = false);
-      warrantyInputs.forEach(i => i.checked = false);
-      previousPlanStep = 3;
-      buildPlansAndGo();
-      return;
-    }
-
-    showStep(4);
-  }
-
-  function getEligiblePlans() {
-    const broken = radioValue("boiler_broken");
-    const under3 = radioValue("boiler_under_3_years");
-    const warranty = radioValue("boiler_warranty_valid");
-
-    if (broken === "Yes") {
-      return {
-        plans: ["Standard", "Complete"],
-        intro: `Because the boiler is currently broken, Essential is not available. Fix & Join applies with a one-off fee of £${fixAndJoinFee} before ongoing cover starts.`,
-        fixJoin: true
-      };
-    }
-
-    if (under3 === "Yes" || warranty === "Yes") {
-      return {
-        plans: ["Essential", "Standard", "Complete"],
-        intro: "Good news — your boiler qualifies for all service plan options.",
-        fixJoin: false
-      };
-    }
-
-    return {
-      plans: ["Standard", "Complete"],
-      intro: "Based on your answers, Standard and Complete are the available options.",
-      fixJoin: false
-    };
-  }
-
-  function buildPlansAndGo() {
-    const broken = radioValue("boiler_broken");
-
-    if (broken === "No") {
-      if (!requireRadio("boiler_under_3_years", "Please answer whether the boiler is under 3 years old.")) return;
-      if (!requireRadio("boiler_warranty_valid", "Please answer whether the boiler is under warranty.")) return;
-      previousPlanStep = 5;
-    }
-
-    const result = getEligiblePlans();
-    const container = document.getElementById("planOptions");
-    const intro = document.getElementById("planIntroText");
-    const hiddenPlan = document.getElementById("selected_plan");
-    const fixJoinBanner = document.getElementById("fixJoinBanner");
-
-    intro.textContent = result.intro;
-    container.innerHTML = "";
-    hiddenPlan.value = "";
-    fixJoinBanner.style.display = result.fixJoin ? "block" : "none";
-
-    result.plans.forEach(plan => {
-      const label = document.createElement("label");
-      label.className = "plan-choice-card";
-      label.innerHTML = `
-        <input type="radio" name="plan_choice_visible" value="${plan}">
-        <div class="plan-choice-card-inner">
-          <strong>${plan}</strong>
-          <span>£${planPrices[plan]}/month</span>
-        </div>
-      `;
-      container.appendChild(label);
-    });
-
-    container.querySelectorAll('input[name="plan_choice_visible"]').forEach(input => {
-      input.addEventListener("change", () => {
-        hiddenPlan.value = input.value;
-        container.querySelectorAll(".plan-choice-card").forEach(card => card.classList.remove("selected"));
-        input.closest(".plan-choice-card").classList.add("selected");
-      });
-    });
-
-    showStep(6);
-  }
-
-  function goBackFromPlanStep() {
-    showStep(previousPlanStep);
-  }
-
-  function goToReview() {
-    const selectedPlan = document.getElementById("selected_plan").value;
-    if (!selectedPlan) {
-      alert("Please choose a plan before continuing.");
-      return;
-    }
-
-    const review = document.getElementById("reviewCard");
-    const broken = radioValue("boiler_broken");
-    const under3 = radioValue("boiler_under_3_years");
-    const warranty = radioValue("boiler_warranty_valid");
-    const fixJoin = broken === "Yes";
-
-    review.innerHTML = `
-      <div class="review-grid">
-        <div><strong>Name:</strong> ${escapeHtml(valueOf("full_name"))}</div>
-        <div><strong>Email:</strong> ${escapeHtml(valueOf("email"))}</div>
-        <div><strong>Phone:</strong> ${escapeHtml(valueOf("phone")) || "-"}</div>
-        <div><strong>Postcode:</strong> ${escapeHtml(valueOf("postcode"))}</div>
-        <div><strong>Address:</strong> ${escapeHtml(valueOf("address_line_1"))}</div>
-        <div><strong>Address line 2:</strong> ${escapeHtml(valueOf("address_line_2")) || "-"}</div>
-        <div><strong>Town / City:</strong> ${escapeHtml(valueOf("city"))}</div>
-        <div><strong>Boiler broken:</strong> ${escapeHtml(broken)}</div>
-        <div><strong>Under 3 years:</strong> ${escapeHtml(under3 || "-")}</div>
-        <div><strong>Under warranty:</strong> ${escapeHtml(warranty || "-")}</div>
-        <div><strong>Selected plan:</strong> ${escapeHtml(selectedPlan)}</div>
-        <div><strong>Monthly price:</strong> £${escapeHtml(planPrices[selectedPlan])}</div>
-        <div><strong>Fix & Join applies:</strong> ${fixJoin ? "Yes" : "No"}</div>
-        <div><strong>Fix & Join fee:</strong> ${fixJoin ? "£" + fixAndJoinFee : "-"}</div>
-      </div>
-    `;
-
-    showStep(7);
-  }
-
-  function goToLegal() {
-    showStep(8);
-  }
-
-  function validateLegalStep() {
-    const signature = valueOf("signature_name");
-    const acceptedTerms = document.getElementById("accepted_terms").checked;
-    const acceptedPrivacy = document.getElementById("accepted_privacy").checked;
-    const acceptedFairUsage = document.getElementById("accepted_fair_usage").checked;
-    const signatureData = getTrimmedSignatureData();
-
-    if (!signature) {
-      alert("Please enter your typed signature name.");
-      document.getElementById("signature_name").focus();
-      return false;
-    }
-
-    if (!signatureData) {
-      alert("Please draw your signature.");
-      return false;
-    }
-
-    document.getElementById("signature_data").value = signatureData;
-
-    if (!acceptedTerms || !acceptedPrivacy || !acceptedFairUsage) {
-      alert("Please accept the Terms, Privacy Policy, and Fair Usage Policy.");
-      return false;
-    }
-
-    return true;
-  }
-
-  function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  const canvas = document.getElementById("signaturePad");
-  const ctx = canvas.getContext("2d");
-  let drawing = false;
-  let hasSignature = false;
-
-  function setupCanvasAppearance() {
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#ffffff";
-  }
-
-  function resizeSignatureCanvas() {
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    const displayWidth = canvas.clientWidth || 820;
-    const displayHeight = 240;
-
-    const existing = hasSignature ? canvas.toDataURL("image/png") : null;
-
-    canvas.width = displayWidth * ratio;
-    canvas.height = displayHeight * ratio;
-    canvas.style.height = displayHeight + "px";
-
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    setupCanvasAppearance();
-
-    if (existing) {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
-      };
-      img.src = existing;
-    }
-  }
-
-  function getCanvasPoint(event) {
-    const rect = canvas.getBoundingClientRect();
-    if (event.touches && event.touches.length > 0) {
-      return {
-        x: event.touches[0].clientX - rect.left,
-        y: event.touches[0].clientY - rect.top
-      };
-    }
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
-  }
-
-  function startDrawing(event) {
-    drawing = true;
-    hasSignature = true;
-    const point = getCanvasPoint(event);
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-    event.preventDefault();
-  }
-
-  function draw(event) {
-    if (!drawing) return;
-    const point = getCanvasPoint(event);
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-    event.preventDefault();
-  }
-
-  function stopDrawing() {
-    drawing = false;
-    ctx.closePath();
-  }
-
-  function clearSignature() {
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    ctx.clearRect(0, 0, canvas.width / ratio, canvas.height / ratio);
-    hasSignature = false;
-    document.getElementById("signature_data").value = "";
-  }
-
-  function getTrimmedSignatureData() {
-    if (!hasSignature) return "";
-
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    const width = canvas.width / ratio;
-    const height = canvas.height / ratio;
-    const imageData = ctx.getImageData(0, 0, width, height).data;
-
-    let minX = width, minY = height, maxX = 0, maxY = 0;
-    let found = false;
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const index = (y * width + x) * 4;
-        const alpha = imageData[index + 3];
-        if (alpha > 0) {
-          found = true;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-
-    if (!found) return "";
-
-    const padding = 8;
-    minX = Math.max(0, minX - padding);
-    minY = Math.max(0, minY - padding);
-    maxX = Math.min(width, maxX + padding);
-    maxY = Math.min(height, maxY + padding);
-
-    const trimWidth = Math.max(1, maxX - minX);
-    const trimHeight = Math.max(1, maxY - minY);
-
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = trimWidth;
-    tempCanvas.height = trimHeight;
-    const tempCtx = tempCanvas.getContext("2d");
-
-    tempCtx.drawImage(canvas, minX, minY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight);
-    return tempCanvas.toDataURL("image/png");
-  }
-
-  canvas.addEventListener("mousedown", startDrawing);
-  canvas.addEventListener("mousemove", draw);
-  canvas.addEventListener("mouseup", stopDrawing);
-  canvas.addEventListener("mouseleave", stopDrawing);
-
-  canvas.addEventListener("touchstart", startDrawing, { passive: false });
-  canvas.addEventListener("touchmove", draw, { passive: false });
-  canvas.addEventListener("touchend", stopDrawing);
-  canvas.addEventListener("touchcancel", stopDrawing);
-
-  window.addEventListener("resize", resizeSignatureCanvas);
-
-  updateProgress();
-  resizeSignatureCanvas();
+}
+
+// POSTCODE LOOKUP
+function lookupPostcode(){
+  let pc=document.getElementById('postcode').value;
+
+  fetch('/api/postcode-lookup?postcode='+pc)
+  .then(res=>res.json())
+  .then(data=>{
+    document.getElementById('city').value=data.city || '';
+  });
+}
+
+// SIGNATURE PAD
+let canvas=document.getElementById('signaturePad');
+let ctx=canvas.getContext('2d');
+let drawing=false;
+
+canvas.addEventListener('mousedown',()=>drawing=true);
+canvas.addEventListener('mouseup',()=>drawing=false);
+canvas.addEventListener('mousemove',e=>{
+  if(!drawing) return;
+  ctx.lineTo(e.offsetX,e.offsetY);
+  ctx.stroke();
+  document.getElementById('signatureData').value=canvas.toDataURL();
+});
 </script>
+
 {% endblock %}

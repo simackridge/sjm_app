@@ -3,40 +3,36 @@
 {% block title %}{{ company_name }} | Admin{% endblock %}
 
 {% block content %}
-<section class="dashboard-head">
-  <div>
-    <h1>Admin dashboard</h1>
-    <p>View signups, payment status, maps, directions, and resend payment links.</p>
+<section class="page-header">
+  <h1>Admin Dashboard</h1>
+  <p>Manage service plan signups, payment links, and customer locations.</p>
+</section>
+
+<div class="admin-top-bar">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-label">Total signups</span>
+      <strong class="stat-value">{{ stats.total }}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">Paid</span>
+      <strong class="stat-value">{{ stats.paid }}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">Conversion</span>
+      <strong class="stat-value">{{ stats.conversion }}%</strong>
+    </div>
   </div>
 
-  <div class="dashboard-actions">
+  <div class="admin-actions">
     <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export CSV</a>
     <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">Log out</a>
   </div>
-</section>
+</div>
 
-<section class="stats-grid">
-  <div class="card stat-card">
-    <span class="stat-label">Total signups</span>
-    <strong class="stat-value">{{ stats.total }}</strong>
-  </div>
-
-  <div class="card stat-card">
-    <span class="stat-label">Paid</span>
-    <strong class="stat-value">{{ stats.paid }}</strong>
-  </div>
-
-  <div class="card stat-card">
-    <span class="stat-label">Conversion</span>
-    <strong class="stat-value">{{ stats.conversion }}%</strong>
-  </div>
-</section>
-
-<section class="card table-card">
-  <div class="table-header">
-    <h2>Signups</h2>
-  </div>
-
+<div class="card table-card">
   {% if signups %}
     <div class="table-wrap">
       <table class="data-table">
@@ -44,7 +40,7 @@
           <tr>
             <th>ID</th>
             <th>Created</th>
-            <th>Name</th>
+            <th>Customer</th>
             <th>Contact</th>
             <th>Address</th>
             <th>Plan</th>
@@ -55,51 +51,88 @@
             <th>Action</th>
           </tr>
         </thead>
+
         <tbody>
-          {% for row in signups %}
+          {% for s in signups %}
             <tr>
-              <td>#{{ row.id }}</td>
-              <td>{{ row.created_at }}</td>
-              <td>{{ row.full_name }}</td>
+              <td>#{{ s.id }}</td>
+
               <td>
-                {{ row.email }}<br>
-                {{ row.phone or "-" }}
+                {{ s.created_at }}
               </td>
-              <td>{{ build_full_address(row) }}</td>
+
               <td>
-                {{ row.selected_plan }}<br>
-                £{{ row.monthly_price }}<br>
-                Fix &amp; Join: {{ row.fix_and_join or "No" }}<br>
-                Fee: {{ "£" ~ row.fix_and_join_fee if row.fix_and_join_fee else "-" }}
+                <strong>{{ s.full_name }}</strong>
               </td>
+
               <td>
-                Broken: {{ row.boiler_broken or "-" }}<br>
-                Under 3 years: {{ row.boiler_under_3_years or "-" }}<br>
-                Warranty: {{ row.boiler_warranty_valid or "-" }}
+                <div>{{ s.email }}</div>
+                <div>{{ s.phone or "-" }}</div>
               </td>
+
               <td>
-                Signature name: {{ row.signature_name or "-" }}<br>
-                Drawn signature: {{ "Yes" if row.signature_data else "No" }}<br>
-                Terms: {{ "Yes" if row.accepted_terms else "No" }}<br>
-                Privacy: {{ "Yes" if row.accepted_privacy else "No" }}<br>
-                Fair usage: {{ "Yes" if row.accepted_fair_usage else "No" }}
+                <div>{{ s.address_line_1 or "" }}</div>
+                {% if s.address_line_2 %}
+                  <div>{{ s.address_line_2 }}</div>
+                {% endif %}
+                <div>{{ s.city or "" }}</div>
+                <div>{{ s.postcode or "" }}</div>
               </td>
+
               <td>
-                <span class="pill
-                  {% if row.payment_status == 'Paid' %}pill-success
-                  {% elif row.payment_status == 'Link sent' %}pill-warning
-                  {% elif row.payment_status == 'Failed' %}pill-danger
-                  {% else %}pill-muted{% endif %}">
-                  {{ row.payment_status or "Not sent" }}
-                </span>
+                <div><strong>{{ s.selected_plan or "-" }}</strong></div>
+                <div>£{{ s.monthly_price or "-" }}/month</div>
+
+                {% if s.fix_and_join == "Yes" %}
+                  <div class="fix-join-admin">
+                    Fix &amp; Join: Yes<br>
+                    Fee: £{{ s.fix_and_join_fee or fix_and_join_fee }}
+                  </div>
+                {% else %}
+                  <div>Fix &amp; Join: No</div>
+                {% endif %}
               </td>
+
               <td>
-                <a href="{{ build_maps_link(row) }}" target="_blank">Map</a><br>
-                <a href="{{ build_directions_link(row) }}" target="_blank">Directions</a>
+                <div>Broken: {{ s.boiler_broken or "-" }}</div>
+                <div>Under 3 years: {{ s.boiler_under_3_years or "-" }}</div>
+                <div>Warranty: {{ s.boiler_warranty_valid or "-" }}</div>
               </td>
+
               <td>
-                <form method="POST" action="{{ url_for('resend_payment', id=row.id) }}">
-                  <button type="submit" class="btn btn-small btn-secondary">Resend link</button>
+                <div>Signature name: {{ s.signature_name or "-" }}</div>
+                <div>Drawn signature: {% if s.signature_data %}Yes{% else %}No{% endif %}</div>
+                <div>Terms: {% if s.accepted_terms %}Yes{% else %}No{% endif %}</div>
+                <div>Privacy: {% if s.accepted_privacy %}Yes{% else %}No{% endif %}</div>
+                <div>Fair usage: {% if s.accepted_fair_usage %}Yes{% else %}No{% endif %}</div>
+              </td>
+
+              <td>
+                {% if s.payment_status == "Paid" %}
+                  <span class="status-pill paid">Paid</span>
+                {% elif s.payment_status == "Link sent" %}
+                  <span class="status-pill sent">Link sent</span>
+                {% elif s.payment_status == "Failed" %}
+                  <span class="status-pill failed">Failed</span>
+                {% else %}
+                  <span class="status-pill pending">{{ s.payment_status or "Not sent" }}</span>
+                {% endif %}
+
+                {% if s.stripe_checkout_url %}
+                  <div class="small-link-wrap">
+                    <a href="{{ s.stripe_checkout_url }}" target="_blank">Open payment link</a>
+                  </div>
+                {% endif %}
+              </td>
+
+              <td>
+                <div><a href="{{ build_maps_link(s) }}" target="_blank">Map</a></div>
+                <div><a href="{{ build_directions_link(s) }}" target="_blank">Directions</a></div>
+              </td>
+
+              <td>
+                <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
+                  <button type="submit" class="btn btn-primary btn-small">Resend link</button>
                 </form>
               </td>
             </tr>
@@ -110,5 +143,5 @@
   {% else %}
     <p>No signups yet.</p>
   {% endif %}
-</section>
+</div>
 {% endblock %}

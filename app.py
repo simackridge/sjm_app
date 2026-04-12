@@ -40,9 +40,9 @@ DOCS_DIR = os.path.join(STATIC_DIR, "docs")
 # -----------------------------------------------------------------------------
 
 COMPANY_NAME = os.environ.get("COMPANY_NAME", "SJM Heating")
-COMPANY_REG = os.environ.get("COMPANY_REG", "")
-COMPANY_PHONE = os.environ.get("COMPANY_PHONE", "")
-COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "")
+COMPANY_REG = os.environ.get("COMPANY_REG", "10947654")
+COMPANY_PHONE = os.environ.get("COMPANY_PHONE", "07826848858")
+COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "info@sjmheating.co.uk")
 COMPANY_WEBSITE = os.environ.get("COMPANY_WEBSITE", "")
 FAVICON_PATH = os.environ.get("FAVICON_PATH", "favicon.ico")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -71,6 +71,8 @@ PLAN_PRICES = {
 }
 
 FIX_AND_JOIN_FEE = "240.99"
+TERMS_VERSION = "v1.0"
+PRIVACY_VERSION = "v1.0"
 
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
@@ -89,6 +91,8 @@ def inject_company_details():
         "company_website": COMPANY_WEBSITE,
         "favicon_path": FAVICON_PATH,
         "fix_and_join_fee": FIX_AND_JOIN_FEE,
+        "terms_version": TERMS_VERSION,
+        "privacy_version": PRIVACY_VERSION,
     }
 
 # -----------------------------------------------------------------------------
@@ -112,8 +116,10 @@ def get_db_connection():
 def clean(value):
     return (value or "").strip()
 
+
 def checkbox_to_bool(value):
     return value in ("on", "true", "True", "1", True)
+
 
 def login_required(func):
     @wraps(func)
@@ -123,13 +129,16 @@ def login_required(func):
         return func(*args, **kwargs)
     return wrapper
 
+
 def safe_success_url():
     return STRIPE_SUCCESS_URL or (
         url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}"
     )
 
+
 def safe_cancel_url():
     return STRIPE_CANCEL_URL or url_for("stripe_cancel", _external=True)
+
 
 def validate_required_env():
     missing = []
@@ -148,8 +157,10 @@ def validate_required_env():
             missing.append(key)
     return missing
 
+
 def docs_file_exists(filename):
     return os.path.exists(os.path.join(DOCS_DIR, filename))
+
 
 def build_full_address(row):
     parts = [
@@ -160,13 +171,16 @@ def build_full_address(row):
     ]
     return ", ".join([p for p in parts if p])
 
+
 def build_maps_link(row):
     address = build_full_address(row)
     return f"https://www.google.com/maps/search/?api=1&query={quote_plus(address)}"
 
+
 def build_directions_link(row):
     address = build_full_address(row)
     return f"https://www.google.com/maps/dir/?api=1&destination={quote_plus(address)}"
+
 
 def get_eligible_plans(broken, under3, warranty):
     if broken == "Yes":
@@ -177,8 +191,8 @@ def get_eligible_plans(broken, under3, warranty):
 
     return ["Standard", "Complete"], False
 
+
 def looks_like_bot_submission(form):
-    # Honeypot only. If this hidden field has any value, reject.
     honeypot = clean(form.get("contact_reference"))
     return bool(honeypot)
 
@@ -190,9 +204,11 @@ def looks_like_bot_submission(form):
 def index():
     return render_template("index.html")
 
+
 @app.route("/signup", methods=["GET"])
 def signup():
     return render_template("signup.html", plan_prices=PLAN_PRICES)
+
 
 @app.route("/success")
 def success():
@@ -213,17 +229,20 @@ def success():
 
     return render_template("success.html", signup=signup_row)
 
+
 @app.route("/terms")
 def terms():
     if docs_file_exists(TERMS_PDF_FILENAME):
         return send_from_directory(DOCS_DIR, TERMS_PDF_FILENAME)
     return render_template("terms.html")
 
+
 @app.route("/privacy")
 def privacy():
     if docs_file_exists(PRIVACY_PDF_FILENAME):
         return send_from_directory(DOCS_DIR, PRIVACY_PDF_FILENAME)
     return render_template("privacy.html")
+
 
 @app.route("/health")
 def health():
@@ -419,6 +438,7 @@ def submit():
                 "signup_id": str(signup_id),
                 "fix_and_join": fix_join,
                 "fix_and_join_fee": fix_and_join_fee,
+                "selected_plan": plan,
             },
         )
     except Exception as e:
@@ -497,6 +517,7 @@ def stripe_success():
 
     return render_template("stripe_success.html")
 
+
 @app.route("/stripe/cancel")
 def stripe_cancel():
     return render_template("stripe_cancel.html")
@@ -515,11 +536,13 @@ def admin_login():
         flash("Wrong password", "error")
     return render_template("admin_login.html")
 
+
 @app.route("/admin/logout")
 def admin_logout():
     session.clear()
     flash("Logged out successfully.", "success")
     return redirect(url_for("admin_login"))
+
 
 @app.route("/admin")
 @login_required
@@ -552,6 +575,7 @@ def admin():
         build_directions_link=build_directions_link,
         build_full_address=build_full_address,
     )
+
 
 @app.route("/admin/resend/<int:id>", methods=["POST"])
 @login_required
@@ -593,6 +617,7 @@ def resend_payment(id):
                 "signup_id": str(id),
                 "fix_and_join": row.get("fix_and_join") or "No",
                 "fix_and_join_fee": row.get("fix_and_join_fee") or "",
+                "selected_plan": row.get("selected_plan") or "",
             },
         )
 
@@ -613,6 +638,7 @@ def resend_payment(id):
 
     flash("Payment link resent.", "success")
     return redirect(url_for("admin"))
+
 
 @app.route("/admin/export.csv")
 @login_required
@@ -696,6 +722,7 @@ def export_csv():
 @app.errorhandler(404)
 def page_not_found(error):
     return render_template("404.html"), 404
+
 
 @app.errorhandler(500)
 def internal_error(error):

@@ -1,19 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Payment Successful{% endblock %}
+{% block title %}Payment Confirmed{% endblock %}
 
 {% block content %}
-<section class="center-wrap">
-  <div class="card success-card">
-    <div class="status-icon success-icon">✓</div>
-    <h1>Payment successful</h1>
-    <p>Your subscription payment was completed successfully.</p>
-    <p>Thank you for joining {{ company_name }}.</p>
+<div class="card success-card">
+  <h1>Payment Successful 🎉</h1>
+  <p>Your subscription is now active.</p>
 
-    <div class="hero-actions">
-      <a href="{{ url_for('index') }}" class="btn btn-primary">Back to home</a>
-      <a href="{{ url_for('signup') }}" class="btn btn-secondary">New signup</a>
-    </div>
-  </div>
-</section>
+  <p>
+    We’ll contact you shortly to confirm your cover and next steps.
+  </p>
+
+  <a href="{{ url_for('success') }}" class="btn btn-primary">
+    Continue
+  </a>
+</div>
 {% endblock %}

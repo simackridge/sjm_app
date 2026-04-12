@@ -4,48 +4,63 @@
 
 {% block content %}
 <section class="hero">
-  <div class="card hero-card">
-    <div class="hero-copy">
-      <span class="eyebrow">Trusted heating cover</span>
-      <h1>Simple monthly service plans from {{ company_name }}</h1>
-      <p class="lead">
-        Straightforward cover, reliable service, and a premium customer experience for homeowners who want peace of mind.
-      </p>
+  <h1>Boiler Cover Made Simple</h1>
+  <p>
+    Reliable heating cover from engineers you can trust. 
+    Fast response, honest pricing, and no nonsense.
+  </p>
 
-      <div class="hero-actions">
-        <a href="{{ url_for('signup') }}" class="btn btn-primary">Join a plan</a>
-        <a href="{{ url_for('terms') }}" target="_blank" class="btn btn-secondary">View terms</a>
-      </div>
+  <a href="{{ url_for('signup') }}" class="btn btn-primary btn-large">
+    Get Covered Now
+  </a>
+</section>
+
+<section class="plans">
+  <h2>Our Plans</h2>
+
+  <div class="plan-grid">
+
+    <div class="plan-card">
+      <h3>Essential</h3>
+      <p class="price">£11/month</p>
+      <ul>
+        <li>Annual service</li>
+        <li>Basic protection</li>
+        <li>For newer boilers only</li>
+      </ul>
     </div>
 
-    <div class="hero-panel">
-      <h2>Available plans</h2>
-      <div class="plan-list">
-        <div class="plan-item">
-          <div>
-            <strong>Essential</strong>
-            <p>For qualifying boilers under 3 years old or under valid warranty.</p>
-          </div>
-          <span>£11.00/mo</span>
-        </div>
-
-        <div class="plan-item">
-          <div>
-            <strong>Standard</strong>
-            <p>Solid everyday cover for most households.</p>
-          </div>
-          <span>£17.99/mo</span>
-        </div>
-
-        <div class="plan-item">
-          <div>
-            <strong>Complete</strong>
-            <p>Our most comprehensive ongoing service option.</p>
-          </div>
-          <span>£23.99/mo</span>
-        </div>
-      </div>
+    <div class="plan-card featured">
+      <h3>Standard</h3>
+      <p class="price">£17.99/month</p>
+      <ul>
+        <li>Service included</li>
+        <li>Breakdown cover</li>
+        <li>Most popular choice</li>
+      </ul>
     </div>
+
+    <div class="plan-card">
+      <h3>Complete</h3>
+      <p class="price">£23.99/month</p>
+      <ul>
+        <li>Full system cover</li>
+        <li>Priority response</li>
+        <li>Total peace of mind</li>
+      </ul>
+    </div>
+
   </div>
+</section>
+
+<section class="cta">
+  <h2>Boiler broken?</h2>
+  <p>
+    No problem — join with our Fix & Join option and we’ll get you back up and running.
+  </p>
+
+  <a href="{{ url_for('signup') }}" class="btn btn-secondary">
+    Start Now
+  </a>
 </section>
 {% endblock %}

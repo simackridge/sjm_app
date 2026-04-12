@@ -3,33 +3,40 @@
 {% block title %}{{ company_name }} | Success{% endblock %}
 
 {% block content %}
-<section class="center-wrap">
-  <div class="card success-card">
-    <div class="status-icon success-icon">✓</div>
-    <h1>Signup received</h1>
-    <p>Thanks for your enquiry. We’ve received your details successfully.</p>
+<section class="page-header">
+  <h1>You're All Set ✅</h1>
+  <p>Your service plan has been successfully set up.</p>
+</section>
 
+<div class="card success-card">
+
+  <p>
+    Thanks for joining {{ company_name }} — we’ve received your details and payment.
+  </p>
+
+  <div class="summary-card">
     {% if signup %}
-      <div class="summary-card">
-        <h2>Your details</h2>
-        <div class="summary-grid">
-          <div><strong>Name:</strong> {{ signup.full_name }}</div>
-          <div><strong>Email:</strong> {{ signup.email }}</div>
-          <div><strong>Phone:</strong> {{ signup.phone or "-" }}</div>
-          <div><strong>Address:</strong> {{ signup.address_line_1 }}</div>
-          <div><strong>Town / City:</strong> {{ signup.city }}</div>
-          <div><strong>Postcode:</strong> {{ signup.postcode }}</div>
-          <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
-          <div><strong>Monthly price:</strong> £{{ signup.monthly_price }}</div>
-          <div><strong>Payment status:</strong> {{ signup.payment_status or "Pending" }}</div>
-        </div>
+      <div class="summary-grid">
+        <div><strong>Name:</strong> {{ signup.full_name }}</div>
+        <div><strong>Email:</strong> {{ signup.email }}</div>
+        <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
+        <div><strong>Monthly:</strong> £{{ signup.monthly_price }}</div>
+
+        {% if signup.fix_and_join == "Yes" %}
+          <div><strong>Fix & Join:</strong> Yes</div>
+          <div><strong>Fee:</strong> £{{ signup.fix_and_join_fee }}</div>
+        {% endif %}
       </div>
     {% endif %}
-
-    <div class="hero-actions">
-      <a href="{{ url_for('index') }}" class="btn btn-primary">Back to home</a>
-      <a href="{{ url_for('signup') }}" class="btn btn-secondary">Create another signup</a>
-    </div>
   </div>
-</section>
+
+  <p>
+    📞 We’ll be in touch shortly to confirm everything and arrange any next steps.
+  </p>
+
+  <a href="{{ url_for('index') }}" class="btn btn-primary">
+    Back to Home
+  </a>
+
+</div>
 {% endblock %}

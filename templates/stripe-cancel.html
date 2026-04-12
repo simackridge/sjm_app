@@ -1,19 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Payment Cancelled{% endblock %}
+{% block title %}Payment Cancelled{% endblock %}
 
 {% block content %}
-<section class="center-wrap">
-  <div class="card warning-card">
-    <div class="status-icon warning-icon">!</div>
-    <h1>Payment cancelled</h1>
-    <p>Your payment was cancelled before completion.</p>
-    <p>You can return to the signup page and try again when you’re ready.</p>
+<div class="card warning-card">
+  <h1>Payment Cancelled</h1>
 
-    <div class="hero-actions">
-      <a href="{{ url_for('signup') }}" class="btn btn-primary">Back to signup</a>
-      <a href="{{ url_for('index') }}" class="btn btn-secondary">Home</a>
-    </div>
-  </div>
-</section>
+  <p>
+    Your payment was not completed. You can try again below.
+  </p>
+
+  <a href="{{ url_for('signup') }}" class="btn btn-primary">
+    Try Again
+  </a>
+</div>
 {% endblock %}
