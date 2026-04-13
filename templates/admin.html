@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-header">
   <h1>Admin Dashboard</h1>
-  <p>Manage service plan signups, payment links, and customer locations.</p>
+  <p>Manage signups, payments, locations, and service reminders.</p>
 </section>
 
 <div class="admin-top-bar">
@@ -28,6 +28,11 @@
 
   <div class="admin-actions">
     <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export CSV</a>
+
+    <form method="POST" action="{{ url_for('run_reminders') }}" style="display:inline;">
+      <button type="submit" class="btn btn-primary">Run reminders</button>
+    </form>
+
     <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">Log out</a>
   </div>
 </div>
@@ -46,6 +51,8 @@
             <th>Plan</th>
             <th>Boiler</th>
             <th>Consent</th>
+            <th>Emails</th>
+            <th>Reminder</th>
             <th>Payment</th>
             <th>Map</th>
             <th>Action</th>
@@ -105,6 +112,45 @@
                 <div>Terms: {% if s.accepted_terms %}Yes{% else %}No{% endif %}</div>
                 <div>Privacy: {% if s.accepted_privacy %}Yes{% else %}No{% endif %}</div>
                 <div>Fair usage: {% if s.accepted_fair_usage %}Yes{% else %}No{% endif %}</div>
+              </td>
+
+              <td>
+                <div>
+                  Customer email:
+                  {% if s.customer_email_sent %}
+                    <span class="status-pill paid">Sent</span>
+                  {% else %}
+                    <span class="status-pill pending">No</span>
+                  {% endif %}
+                </div>
+
+                <div style="margin-top:8px;">
+                  Admin alert:
+                  {% if s.admin_email_sent %}
+                    <span class="status-pill paid">Sent</span>
+                  {% else %}
+                    <span class="status-pill pending">No</span>
+                  {% endif %}
+                </div>
+              </td>
+
+              <td>
+                <div><strong>Due:</strong> {{ s.reminder_due_date or "-" }}</div>
+
+                <div style="margin-top:8px;">
+                  {% if s.reminder_sent %}
+                    <span class="status-pill paid">Reminder sent</span>
+                  {% else %}
+                    <span class="status-pill pending">Not sent</span>
+                  {% endif %}
+                </div>
+
+                {% if s.reminder_sent_at %}
+                  <div style="margin-top:8px;">
+                    <strong>Sent at:</strong><br>
+                    {{ s.reminder_sent_at }}
+                  </div>
+                {% endif %}
               </td>
 
               <td>

@@ -1,7 +1,8 @@
-Flask
-python-dotenv
-resend
-stripe>=11,<12
-psycopg2-binary
-reportlab
-gunicorn
+Flask==3.1.0
+gunicorn==23.0.0
+python-dotenv==1.0.1
+stripe==11.6.0
+resend==2.5.1
+psycopg2-binary==2.9.10
+requests==2.32.3
+reportlab==4.2.5
