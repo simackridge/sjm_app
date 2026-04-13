@@ -10,18 +10,17 @@
 
 <div class="card form-card">
   <form method="POST" action="{{ url_for('submit') }}" id="signupForm">
-
     <input type="text" name="contact_reference" style="display:none">
 
     <!-- STEP 1 -->
     <div class="step active" id="step1">
       <h2>Your Details</h2>
 
-      <input name="full_name" placeholder="Full Name *" required>
-      <input name="email" placeholder="Email *" required>
-      <input name="phone" placeholder="Phone">
+      <input id="full_name" name="full_name" placeholder="Full Name *" required>
+      <input id="email" name="email" type="email" placeholder="Email *" required>
+      <input id="phone" name="phone" placeholder="Phone">
 
-      <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next</button>
+      <button type="button" class="btn btn-primary" onclick="goToAddressStep()">Next</button>
     </div>
 
     <!-- STEP 2 ADDRESS -->
@@ -53,7 +52,8 @@
         <input id="city" name="city" placeholder="Town / City *" required>
       </div>
 
-      <div style="margin-top:18px;">
+      <div style="margin-top:18px; display:flex; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="nextStep(1)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToBoilerStep()">Next</button>
       </div>
     </div>
@@ -70,19 +70,20 @@
 
       <div id="extraQuestions" style="margin-top:16px;">
         <select id="under3" name="boiler_under_3_years">
-          <option value="">Under 3 years old?</option>
+          <option value="">Under 3 years old? *</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
 
         <select id="warranty" name="boiler_warranty_valid" style="margin-top:12px;">
-          <option value="">Still under warranty?</option>
+          <option value="">Still under warranty? *</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
       </div>
 
-      <div style="margin-top:18px;">
+      <div style="margin-top:18px; display:flex; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToPlanStep()">Next</button>
       </div>
     </div>
@@ -91,13 +92,16 @@
     <div class="step" id="step4">
       <h2>Select Plan</h2>
 
-      <select id="plan" name="selected_plan" required></select>
+      <select id="plan" name="selected_plan" required>
+        <option value="">Choose a plan *</option>
+      </select>
 
       <div id="fixJoinBox" class="note-box" style="display:none; margin-top:14px;">
         ⚠️ Your boiler is broken — Fix & Join fee of £{{ fix_and_join_fee }} applies.
       </div>
 
-      <div style="margin-top:18px;">
+      <div style="margin-top:18px; display:flex; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="nextStep(3)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToAgreementStep()">Next</button>
       </div>
     </div>
@@ -106,13 +110,17 @@
     <div class="step" id="step5">
       <h2>Agreement</h2>
 
-      <input name="signature_name" placeholder="Type your full name *" required>
+      <input id="signature_name" name="signature_name" placeholder="Type your full name *" required>
 
       <p style="margin-top:16px;">Draw your signature:</p>
-      <canvas id="signaturePad" width="300" height="150"></canvas>
+     <canvas id="signaturePad" width="420" height="180"></canvas>
       <input type="hidden" name="signature_data" id="signatureData">
 
-      <div class="checkboxes">
+      <div style="margin-top:10px;">
+        <button type="button" class="btn btn-secondary" onclick="clearSignature()">Clear Signature</button>
+      </div>
+
+      <div class="checkboxes" style="margin-top:18px;">
         <label>
           <input type="checkbox" name="accepted_terms" required>
           I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
@@ -129,11 +137,11 @@
         </label>
       </div>
 
-      <div style="margin-top:18px;">
+      <div style="margin-top:18px; display:flex; gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="nextStep(4)">Back</button>
         <button type="submit" class="btn btn-primary">Continue to Payment</button>
       </div>
     </div>
-
   </form>
 </div>
 
@@ -141,21 +149,35 @@
 .step { display:none; }
 .step.active { display:block; }
 
-canvas {
+#signaturePad {
   border: 2px solid #ddd;
-  background: #ffffff;   /* THIS FIXES BLACK BACKGROUND */
+  background: #ffffff;
   border-radius: 6px;
   touch-action: none;
+  display: block;
+  max-width: 100%;
 }
 </style>
 
 <script>
-function nextStep(step){
+function nextStep(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step' + step).classList.add('active');
 }
 
-function goToBoilerStep(){
+function goToAddressStep() {
+  const name = document.getElementById('full_name').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  if (!name || !email) {
+    alert('Please complete your full name and email.');
+    return;
+  }
+
+  nextStep(2);
+}
+
+function goToBoilerStep() {
   const postcode = document.getElementById('postcode').value.trim();
   const address1 = document.getElementById('address1').value.trim();
   const city = document.getElementById('city').value.trim();
@@ -168,7 +190,7 @@ function goToBoilerStep(){
   nextStep(3);
 }
 
-function goToPlanStep(){
+function goToPlanStep() {
   const broken = document.getElementById('broken').value;
   const under3 = document.getElementById('under3').value;
   const warranty = document.getElementById('warranty').value;
@@ -187,7 +209,7 @@ function goToPlanStep(){
   nextStep(4);
 }
 
-function goToAgreementStep(){
+function goToAgreementStep() {
   const plan = document.getElementById('plan').value;
   if (!plan) {
     alert('Please select a plan.');
@@ -196,16 +218,19 @@ function goToAgreementStep(){
   nextStep(5);
 }
 
-function updateFlow(){
-  let broken = document.getElementById('broken').value;
-  let plan = document.getElementById('plan');
-  let fixBox = document.getElementById('fixJoinBox');
-  let extraQuestions = document.getElementById('extraQuestions');
+function updateFlow() {
+  const broken = document.getElementById('broken').value;
+  const under3 = document.getElementById('under3').value;
+  const warranty = document.getElementById('warranty').value;
 
-  plan.innerHTML = '';
+  const plan = document.getElementById('plan');
+  const fixBox = document.getElementById('fixJoinBox');
+  const extraQuestions = document.getElementById('extraQuestions');
+
+  plan.innerHTML = '<option value="">Choose a plan *</option>';
 
   if (broken === 'Yes') {
-    plan.innerHTML = `
+    plan.innerHTML += `
       <option value="Standard">Standard</option>
       <option value="Complete">Complete</option>
     `;
@@ -213,25 +238,36 @@ function updateFlow(){
     extraQuestions.style.display = 'none';
     document.getElementById('under3').value = '';
     document.getElementById('warranty').value = '';
-  } else {
-    plan.innerHTML = `
-      <option value="Essential">Essential</option>
-      <option value="Standard">Standard</option>
-      <option value="Complete">Complete</option>
-    `;
-    fixBox.style.display = 'none';
-    extraQuestions.style.display = 'block';
+    return;
+  }
+
+  extraQuestions.style.display = 'block';
+  fixBox.style.display = 'none';
+
+  if (broken === 'No') {
+    if (under3 === 'Yes' || warranty === 'Yes') {
+      plan.innerHTML += `
+        <option value="Essential">Essential</option>
+        <option value="Standard">Standard</option>
+        <option value="Complete">Complete</option>
+      `;
+    } else if (under3 === 'No' && warranty === 'No') {
+      plan.innerHTML += `
+        <option value="Standard">Standard</option>
+        <option value="Complete">Complete</option>
+      `;
+    }
   }
 }
 
 let lookupRunning = false;
 
-function lookupPostcode(){
+function lookupPostcode() {
   if (lookupRunning) return;
 
-  let pc = document.getElementById('postcode').value.trim();
-  let btn = document.getElementById('lookupBtn');
-  let message = document.getElementById('lookupMessage');
+  const pc = document.getElementById('postcode').value.trim();
+  const btn = document.getElementById('lookupBtn');
+  const message = document.getElementById('lookupMessage');
 
   if (!pc) {
     alert('Please enter a postcode first.');
@@ -270,40 +306,48 @@ function lookupPostcode(){
 }
 
 // SIGNATURE PAD
-<script>
-let canvas = document.getElementById('signaturePad');
-let ctx = canvas.getContext('2d');
-
+const canvas = document.getElementById('signaturePad');
+const ctx = canvas.getContext('2d');
 let drawing = false;
 
-// SET PEN STYLE (THIS FIXES IT)
-ctx.strokeStyle = "#000000";   // BLACK PEN
-ctx.lineWidth = 2;
-ctx.lineCap = "round";
+function prepareCanvas() {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+}
 
-// Make background white (important for PDF too)
-ctx.fillStyle = "#ffffff";
-ctx.fillRect(0, 0, canvas.width, canvas.height);
+function getCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+}
 
 function startDraw(e) {
   drawing = true;
+  const pos = getCoords(e);
   ctx.beginPath();
-  const rect = canvas.getBoundingClientRect();
-  ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  ctx.moveTo(pos.x, pos.y);
 }
 
 function draw(e) {
   if (!drawing) return;
-
-  const rect = canvas.getBoundingClientRect();
-  ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+  const pos = getCoords(e);
+  ctx.lineTo(pos.x, pos.y);
   ctx.stroke();
-
-  document.getElementById('signatureData').value = canvas.toDataURL("image/png");
+  document.getElementById('signatureData').value = canvas.toDataURL('image/png');
 }
 
 function stopDraw() {
   drawing = false;
+}
+
+function clearSignature() {
+  prepareCanvas();
+  document.getElementById('signatureData').value = '';
 }
 
 canvas.addEventListener('mousedown', startDraw);
@@ -311,46 +355,22 @@ canvas.addEventListener('mousemove', draw);
 canvas.addEventListener('mouseup', stopDraw);
 canvas.addEventListener('mouseleave', stopDraw);
 
-// TOUCH SUPPORT (mobile)
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   startDraw(e.touches[0]);
-});
+}, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   draw(e.touches[0]);
-});
+}, { passive: false });
 
-canvas.addEventListener('touchend', stopDraw);
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  stopDraw();
+}, { passive: false });
 
-// CLEAR BUTTON (optional but recommended)
-function clearSignature() {
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  document.getElementById('signatureData').value = "";
-}
-</script>
-
-canvas.addEventListener('mousedown', (e) => {
-  drawing = true;
-  ctx.beginPath();
-  ctx.moveTo(e.offsetX, e.offsetY);
-});
-
-canvas.addEventListener('mouseup', () => {
-  drawing = false;
-});
-
-canvas.addEventListener('mouseleave', () => {
-  drawing = false;
-});
-
-canvas.addEventListener('mousemove', (e) => {
-  if (!drawing) return;
-  ctx.lineTo(e.offsetX, e.offsetY);
-  ctx.stroke();
-  document.getElementById('signatureData').value = canvas.toDataURL();
-});
+prepareCanvas();
+updateFlow();
 </script>
 {% endblock %}

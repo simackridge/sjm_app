@@ -68,6 +68,8 @@ img{
   display:flex;
   align-items:center;
   gap:14px;
+  color:var(--text);
+}
 }
 
 .brand img{
@@ -451,10 +453,12 @@ textarea:focus{
   max-width:420px;
   height:180px;
   border:1px solid var(--border);
-  background:#0f0f0f;
+  background:#ffffff;
   border-radius:14px;
   margin-top:10px;
   cursor:crosshair;
+  display:block;
+  touch-action:none;
 }
 
 .fix-join-admin{

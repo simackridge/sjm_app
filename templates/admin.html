@@ -64,9 +64,7 @@
             <tr>
               <td>#{{ s.id }}</td>
 
-              <td>
-                {{ s.created_at }}
-              </td>
+              <td>{{ s.created_at }}</td>
 
               <td>
                 <strong>{{ s.full_name }}</strong>
@@ -166,19 +164,19 @@
 
                 {% if s.stripe_checkout_url %}
                   <div class="small-link-wrap">
-                    <a href="{{ s.stripe_checkout_url }}" target="_blank">Open payment link</a>
+                    <a href="{{ s.stripe_checkout_url }}" target="_blank" rel="noopener noreferrer">Open payment link</a>
                   </div>
                 {% endif %}
               </td>
 
               <td>
-                <div><a href="{{ build_maps_link(s) }}" target="_blank">Map</a></div>
-                <div><a href="{{ build_directions_link(s) }}" target="_blank">Directions</a></div>
+                <div><a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a></div>
+                <div><a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a></div>
               </td>
 
               <td>
                 <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
-                  <button type="submit" class="btn btn-primary btn-small">Resend link</button>
+                  <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
                 </form>
               </td>
             </tr>

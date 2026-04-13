@@ -15,6 +15,7 @@ import csv
 import io
 import base64
 import tempfile
+import logging
 from functools import wraps
 from urllib.parse import quote_plus
 
@@ -24,6 +25,7 @@ import resend
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
@@ -36,6 +38,17 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+logger = logging.getLogger("sjm_service_plan")
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -59,6 +72,7 @@ RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", COMPANY_EMAIL)
 resend.api_key = os.environ.get("RESEND_API_KEY")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 STRIPE_PRICES = {
     "Essential": os.environ.get("STRIPE_PRICE_ESSENTIAL"),
@@ -119,6 +133,25 @@ def get_db_connection():
         port=DB_PORT,
         cursor_factory=RealDictCursor,
     )
+
+
+def db_execute(query, params=None, fetchone=False, fetchall=False, commit=False):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, params or ())
+            result = None
+            if fetchone:
+                result = cur.fetchone()
+            elif fetchall:
+                result = cur.fetchall()
+
+            if commit:
+                conn.commit()
+
+            return result
+    finally:
+        conn.close()
 
 # -----------------------------------------------------------------------------
 # HELPERS
@@ -208,14 +241,109 @@ def looks_like_bot_submission(form):
     return bool(honeypot)
 
 
+def money_to_pence(value):
+    value = clean(value)
+    if not value:
+        return 0
+    parts = value.split(".")
+    pounds = int(parts[0])
+    pence = int((parts[1] if len(parts) > 1 else "0").ljust(2, "0")[:2])
+    return pounds * 100 + pence
+
+
 def fetch_signup(signup_id):
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM signups WHERE id=%s", (signup_id,))
-            return cur.fetchone()
-    finally:
-        conn.close()
+    return db_execute(
+        "SELECT * FROM signups WHERE id=%s",
+        (signup_id,),
+        fetchone=True,
+    )
+
+
+def update_signup_email_status(signup_id, customer_sent=None, admin_sent=None):
+    updates = []
+    values = []
+
+    if customer_sent is not None:
+        updates.append("customer_email_sent=%s")
+        values.append(customer_sent)
+
+    if admin_sent is not None:
+        updates.append("admin_email_sent=%s")
+        values.append(admin_sent)
+
+    if not updates:
+        return
+
+    updates.append("updated_at=%s")
+    values.append(datetime.now(UTC))
+    values.append(signup_id)
+
+    db_execute(
+        f"""
+        UPDATE signups
+        SET {", ".join(updates)}
+        WHERE id=%s
+        """,
+        tuple(values),
+        commit=True,
+    )
+
+
+def mark_reminder_sent(signup_id):
+    now = datetime.now(UTC)
+    db_execute(
+        """
+        UPDATE signups
+        SET reminder_sent=TRUE,
+            reminder_sent_at=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (now, now, signup_id),
+        commit=True,
+    )
+
+
+def mark_payment_link_generated(signup_id, checkout_url, checkout_session_id):
+    now = datetime.now(UTC)
+    db_execute(
+        """
+        UPDATE signups
+        SET stripe_checkout_url=%s,
+            stripe_checkout_session_id=%s,
+            payment_status='Link sent',
+            last_payment_link_sent_at=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (checkout_url, checkout_session_id, now, now, signup_id),
+        commit=True,
+    )
+
+
+def mark_signup_paid(signup_id, checkout=None):
+    now = datetime.now(UTC)
+
+    stripe_customer_id = None
+    stripe_subscription_id = None
+
+    if checkout:
+        stripe_customer_id = getattr(checkout, "customer", None)
+        stripe_subscription_id = getattr(checkout, "subscription", None)
+
+    db_execute(
+        """
+        UPDATE signups
+        SET payment_status='Paid',
+            payment_completed_at=%s,
+            stripe_customer_id=COALESCE(%s, stripe_customer_id),
+            stripe_subscription_id=COALESCE(%s, stripe_subscription_id),
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (now, stripe_customer_id, stripe_subscription_id, now, signup_id),
+        commit=True,
+    )
 
 
 def ensure_extra_columns():
@@ -229,7 +357,13 @@ def ensure_extra_columns():
                 ADD COLUMN IF NOT EXISTS admin_email_sent BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS reminder_due_date TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP
+                ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT,
+                ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT,
+                ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
+                ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT,
+                ADD COLUMN IF NOT EXISTS payment_completed_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS last_payment_link_sent_at TIMESTAMP
                 """
             )
         conn.commit()
@@ -237,56 +371,67 @@ def ensure_extra_columns():
         conn.close()
 
 
-def update_signup_email_status(signup_id, customer_sent=None, admin_sent=None):
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            if customer_sent is not None:
-                cur.execute(
-                    """
-                    UPDATE signups
-                    SET customer_email_sent=%s, updated_at=%s
-                    WHERE id=%s
-                    """,
-                    (customer_sent, datetime.now(UTC), signup_id),
-                )
-            if admin_sent is not None:
-                cur.execute(
-                    """
-                    UPDATE signups
-                    SET admin_email_sent=%s, updated_at=%s
-                    WHERE id=%s
-                    """,
-                    (admin_sent, datetime.now(UTC), signup_id),
-                )
-        conn.commit()
-    finally:
-        conn.close()
+def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_fee=""):
+    line_items = [
+        {
+            "price": STRIPE_PRICES[plan],
+            "quantity": 1,
+        }
+    ]
 
+    session_kwargs = {
+        "payment_method_types": ["card"],
+        "mode": "subscription",
+        "line_items": line_items,
+        "success_url": safe_success_url(),
+        "cancel_url": safe_cancel_url(),
+        "customer_email": email,
+        "metadata": {
+            "signup_id": str(signup_id),
+            "fix_and_join": fix_join,
+            "fix_and_join_fee": fix_and_join_fee,
+            "selected_plan": plan,
+        },
+    }
 
-def mark_reminder_sent(signup_id):
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE signups
-                SET reminder_sent=TRUE,
-                    reminder_sent_at=%s,
-                    updated_at=%s
-                WHERE id=%s
-                """,
-                (datetime.now(UTC), datetime.now(UTC), signup_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    if fix_join == "Yes" and fix_and_join_fee:
+        session_kwargs["subscription_data"] = {
+            "metadata": {
+                "signup_id": str(signup_id),
+                "fix_and_join": fix_join,
+                "selected_plan": plan,
+            },
+            "add_invoice_items": [
+                {
+                    "price_data": {
+                        "currency": "gbp",
+                        "product_data": {
+                            "name": "Fix & Join fee",
+                            "description": "One-off Fix & Join charge",
+                        },
+                        "unit_amount": money_to_pence(fix_and_join_fee),
+                    },
+                    "quantity": 1,
+                }
+            ],
+        }
+
+    return stripe.checkout.Session.create(**session_kwargs)
 
 # -----------------------------------------------------------------------------
 # PDF GENERATION
 # -----------------------------------------------------------------------------
 
-def draw_wrapped_text(pdf, text, x, y, max_width, line_height=14, font_name="Helvetica", font_size=10):
+def draw_wrapped_text(
+    pdf,
+    text,
+    x,
+    y,
+    max_width,
+    line_height=14,
+    font_name="Helvetica",
+    font_size=10,
+):
     pdf.setFont(font_name, font_size)
     words = (text or "").split()
     if not words:
@@ -322,6 +467,7 @@ def decode_signature_to_tempfile(signature_data):
         tmp.close()
         return tmp.name
     except Exception:
+        logger.exception("Could not decode signature image.")
         return None
 
 
@@ -335,9 +481,17 @@ def build_contract_pdf_bytes(signup):
 
     if os.path.exists(LOGO_PATH):
         try:
-            pdf.drawImage(LOGO_PATH, margin, y - 40, width=90, height=40, preserveAspectRatio=True, mask="auto")
+            pdf.drawImage(
+                LOGO_PATH,
+                margin,
+                y - 40,
+                width=90,
+                height=40,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
         except Exception:
-            pass
+            logger.exception("Could not draw logo in PDF.")
 
     pdf.setFont("Helvetica-Bold", 18)
     pdf.drawRightString(width - margin, y - 10, "Service Plan Agreement")
@@ -385,7 +539,11 @@ def build_contract_pdf_bytes(signup):
     y -= 14
 
     if signup.get("fix_and_join") == "Yes":
-        pdf.drawString(margin, y, f"Fix & Join Fee: £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}")
+        pdf.drawString(
+            margin,
+            y,
+            f"Fix & Join Fee: £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}",
+        )
         y -= 18
         y = draw_wrapped_text(
             pdf,
@@ -403,11 +561,23 @@ def build_contract_pdf_bytes(signup):
     pdf.drawString(margin, y, "Legal Acceptance")
     y -= 18
     pdf.setFont("Helvetica", 10)
-    pdf.drawString(margin, y, f"Terms Accepted: {'Yes' if signup.get('accepted_terms') else 'No'} ({TERMS_VERSION})")
+    pdf.drawString(
+        margin,
+        y,
+        f"Terms Accepted: {'Yes' if signup.get('accepted_terms') else 'No'} ({TERMS_VERSION})",
+    )
     y -= 14
-    pdf.drawString(margin, y, f"Privacy Accepted: {'Yes' if signup.get('accepted_privacy') else 'No'} ({PRIVACY_VERSION})")
+    pdf.drawString(
+        margin,
+        y,
+        f"Privacy Accepted: {'Yes' if signup.get('accepted_privacy') else 'No'} ({PRIVACY_VERSION})",
+    )
     y -= 14
-    pdf.drawString(margin, y, f"Fair Usage Accepted: {'Yes' if signup.get('accepted_fair_usage') else 'No'}")
+    pdf.drawString(
+        margin,
+        y,
+        f"Fair Usage Accepted: {'Yes' if signup.get('accepted_fair_usage') else 'No'}",
+    )
     y -= 24
 
     pdf.setFont("Helvetica-Bold", 12)
@@ -432,21 +602,31 @@ def build_contract_pdf_bytes(signup):
     sig_path = decode_signature_to_tempfile(signup.get("signature_data"))
     if sig_path and os.path.exists(sig_path):
         try:
-            pdf.drawImage(sig_path, margin, y - 60, width=160, height=60, preserveAspectRatio=True, mask="auto")
+            pdf.drawImage(
+                sig_path,
+                margin,
+                y - 60,
+                width=160,
+                height=60,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
             y -= 70
         except Exception:
+            logger.exception("Could not render signature image in PDF.")
             pdf.drawString(margin, y, "Signature image could not be rendered.")
             y -= 14
         finally:
             try:
                 os.unlink(sig_path)
             except Exception:
-                pass
+                logger.exception("Could not delete temporary signature file.")
     else:
         pdf.drawString(margin, y, "No drawn signature available.")
         y -= 14
 
-    pdf.drawString(margin, y, f"Signed At: {signup.get('created_at') or datetime.now(UTC)}")
+    signed_at = signup.get("created_at") or datetime.now(UTC)
+    pdf.drawString(margin, y, f"Signed At: {signed_at}")
     y -= 14
     pdf.drawString(margin, y, f"Reminder Due Date: {signup.get('reminder_due_date') or '-'}")
     y -= 24
@@ -465,6 +645,7 @@ def build_contract_pdf_bytes(signup):
 
 def send_customer_confirmation_email(signup, pdf_bytes):
     if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email"):
+        logger.warning("Customer confirmation email skipped for signup %s", signup.get("id"))
         return False
 
     fix_join_html = ""
@@ -515,6 +696,7 @@ def send_customer_confirmation_email(signup, pdf_bytes):
 
 def send_admin_notification_email(signup, pdf_bytes):
     if not resend.api_key or not RESEND_FROM_EMAIL or not ADMIN_NOTIFICATION_EMAIL:
+        logger.warning("Admin notification email skipped for signup %s", signup.get("id"))
         return False
 
     html = f"""
@@ -554,6 +736,7 @@ def send_admin_notification_email(signup, pdf_bytes):
 
 def send_service_reminder_email(signup):
     if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email"):
+        logger.warning("Reminder email skipped for signup %s", signup.get("id"))
         return False
 
     html = f"""
@@ -584,10 +767,57 @@ def send_service_reminder_email(signup):
     return True
 
 
+def send_payment_link_email(signup, payment_url):
+    if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email") or not payment_url:
+        logger.warning("Payment link email skipped for signup %s", signup.get("id"))
+        return False
+
+    fix_join_html = ""
+    if signup.get("fix_and_join") == "Yes":
+        fix_join_html = f"""
+        <p><strong>Fix &amp; Join fee:</strong> £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}</p>
+        """
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
+      <h2>{COMPANY_NAME} payment link</h2>
+
+      <p>Hello {signup.get('full_name') or ''},</p>
+      <p>Please use the link below to continue with your service plan payment.</p>
+
+      <p><strong>Plan:</strong> {signup.get('selected_plan') or '-'}</p>
+      <p><strong>Monthly price:</strong> £{signup.get('monthly_price') or '-'}</p>
+      {fix_join_html}
+
+      <p>
+        <a href="{payment_url}" style="display:inline-block;padding:12px 18px;background:#ff6a00;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;">
+          Continue to payment
+        </a>
+      </p>
+
+      <p>If the button does not work, copy and paste this link into your browser:</p>
+      <p>{payment_url}</p>
+
+      <p>Thanks,<br>{COMPANY_NAME}</p>
+    </div>
+    """
+
+    resend.Emails.send(
+        {
+            "from": RESEND_FROM_EMAIL,
+            "to": [signup["email"]],
+            "subject": f"{COMPANY_NAME} payment link",
+            "html": html,
+        }
+    )
+    return True
+
+
 def send_post_payment_emails(signup_id):
     ensure_extra_columns()
     signup = fetch_signup(signup_id)
     if not signup:
+        logger.warning("Signup %s not found for post-payment emails.", signup_id)
         return
 
     pdf_bytes = build_contract_pdf_bytes(signup)
@@ -597,14 +827,39 @@ def send_post_payment_emails(signup_id):
             if send_customer_confirmation_email(signup, pdf_bytes):
                 update_signup_email_status(signup_id, customer_sent=True)
         except Exception:
-            pass
+            logger.exception("Failed sending customer confirmation email for signup %s", signup_id)
 
     if not signup.get("admin_email_sent"):
         try:
             if send_admin_notification_email(signup, pdf_bytes):
                 update_signup_email_status(signup_id, admin_sent=True)
         except Exception:
-            pass
+            logger.exception("Failed sending admin notification email for signup %s", signup_id)
+
+# -----------------------------------------------------------------------------
+# STRIPE EVENT HANDLING
+# -----------------------------------------------------------------------------
+
+def handle_completed_checkout_session(checkout):
+    signup_id = None
+    try:
+        signup_id = checkout.metadata.get("signup_id")
+    except Exception:
+        pass
+
+    if not signup_id:
+        logger.warning("Completed Stripe session had no signup_id metadata.")
+        return
+
+    signup = fetch_signup(signup_id)
+    if not signup:
+        logger.warning("Signup %s not found for completed Stripe session.", signup_id)
+        return
+
+    if signup.get("payment_status") != "Paid":
+        mark_signup_paid(signup_id, checkout=checkout)
+
+    send_post_payment_emails(signup_id)
 
 # -----------------------------------------------------------------------------
 # ROUTES
@@ -629,6 +884,7 @@ def success():
         try:
             signup_row = fetch_signup(signup_id)
         except Exception:
+            logger.exception("Could not fetch signup %s for success page.", signup_id)
             signup_row = None
 
     return render_template("success.html", signup=signup_row)
@@ -679,6 +935,7 @@ def postcode_lookup():
             "country": result.get("country") or "",
         }
     except Exception:
+        logger.exception("Postcode lookup failed for %s", postcode)
         return {"error": "Lookup failed"}, 500
 
 
@@ -757,7 +1014,7 @@ def submit():
         return redirect(url_for("signup"))
 
     now = datetime.now(UTC)
-    reminder_due_date = now + timedelta(days=335)  # approx 11 months
+    reminder_due_date = now + timedelta(days=335)
 
     conn = get_db_connection()
     try:
@@ -828,69 +1085,35 @@ def submit():
         conn.close()
 
     try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[
-                {
-                    "price": STRIPE_PRICES[plan],
-                    "quantity": 1,
-                }
-            ],
-            success_url=safe_success_url(),
-            cancel_url=safe_cancel_url(),
-            customer_email=email,
-            metadata={
-                "signup_id": str(signup_id),
-                "fix_and_join": fix_join,
-                "fix_and_join_fee": fix_and_join_fee,
-                "selected_plan": plan,
-            },
+        checkout_session = create_checkout_session(
+            signup_id=signup_id,
+            email=email,
+            plan=plan,
+            fix_join=fix_join,
+            fix_and_join_fee=fix_and_join_fee,
         )
     except Exception as e:
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE signups
-                    SET payment_status='Failed',
-                        updated_at=%s
-                    WHERE id=%s
-                    """,
-                    (datetime.now(UTC), signup_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
-
+        db_execute(
+            """
+            UPDATE signups
+            SET payment_status='Failed',
+                updated_at=%s
+            WHERE id=%s
+            """,
+            (datetime.now(UTC), signup_id),
+            commit=True,
+        )
+        logger.exception("Unable to create Stripe checkout for signup %s", signup_id)
         flash(f"Unable to create Stripe checkout: {e}", "error")
         return redirect(url_for("signup"))
 
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE signups
-                SET stripe_checkout_url=%s,
-                    payment_status='Link sent',
-                    updated_at=%s
-                WHERE id=%s
-                """,
-                (checkout_session.url, datetime.now(UTC), signup_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
+    mark_payment_link_generated(signup_id, checkout_session.url, checkout_session.id)
     return redirect(checkout_session.url)
 
 
 @app.route("/stripe/success")
 def stripe_success():
     ensure_extra_columns()
-
     session_id = request.args.get("session_id")
 
     if not session_id:
@@ -900,39 +1123,71 @@ def stripe_success():
         checkout = stripe.checkout.Session.retrieve(session_id)
         signup_id = checkout.metadata.get("signup_id")
     except Exception as e:
+        logger.exception("Could not verify Stripe success session.")
         flash(f"Could not verify payment session: {e}", "error")
         return render_template("stripe_success.html")
 
-    if signup_id:
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE signups
-                    SET payment_status='Paid',
-                        updated_at=%s
-                    WHERE id=%s
-                    """,
-                    (datetime.now(UTC), signup_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+    if not signup_id:
+        flash("Could not match this payment to a signup.", "error")
+        return render_template("stripe_success.html")
 
+    paid_statuses = {"paid", "no_payment_required"}
+    checkout_status = getattr(checkout, "payment_status", None)
+
+    if checkout_status in paid_statuses:
         try:
-            send_post_payment_emails(signup_id)
+            handle_completed_checkout_session(checkout)
         except Exception:
-            pass
+            logger.exception("Failed handling completed Stripe checkout session %s", session_id)
+    else:
+        logger.warning(
+            "Stripe success page reached for session %s but payment_status was %s",
+            session_id,
+            checkout_status,
+        )
 
-        return redirect(url_for("success", signup_id=signup_id))
-
-    return render_template("stripe_success.html")
+    return redirect(url_for("success", signup_id=signup_id))
 
 
 @app.route("/stripe/cancel")
 def stripe_cancel():
     return render_template("stripe_cancel.html")
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+
+    if not STRIPE_WEBHOOK_SECRET:
+        logger.error("Stripe webhook called but STRIPE_WEBHOOK_SECRET is not configured.")
+        return {"error": "Webhook secret not configured"}, 500
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload=payload,
+            sig_header=sig_header,
+            secret=STRIPE_WEBHOOK_SECRET,
+        )
+    except ValueError:
+        logger.exception("Invalid Stripe webhook payload.")
+        return {"error": "Invalid payload"}, 400
+    except stripe.error.SignatureVerificationError:
+        logger.exception("Invalid Stripe webhook signature.")
+        return {"error": "Invalid signature"}, 400
+
+    event_type = event["type"]
+    logger.info("Stripe webhook received: %s", event_type)
+
+    try:
+        if event_type == "checkout.session.completed":
+            checkout = event["data"]["object"]
+            handle_completed_checkout_session(checkout)
+    except Exception:
+        logger.exception("Error processing Stripe webhook event %s", event_type)
+        return {"error": "Webhook processing failed"}, 500
+
+    return {"received": True}, 200
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -996,58 +1251,40 @@ def resend_payment(id):
         flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
         return redirect(url_for("admin"))
 
-    conn = get_db_connection()
+    signup = fetch_signup(id)
+    if not signup:
+        flash("Signup not found.", "error")
+        return redirect(url_for("admin"))
+
+    plan = signup["selected_plan"]
+
+    if not STRIPE_PRICES.get(plan):
+        flash(f"Stripe price is not configured for {plan}.", "error")
+        return redirect(url_for("admin"))
+
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM signups WHERE id=%s", (id,))
-            row = cur.fetchone()
-
-        if not row:
-            flash("Signup not found.", "error")
-            return redirect(url_for("admin"))
-
-        plan = row["selected_plan"]
-
-        if not STRIPE_PRICES.get(plan):
-            flash(f"Stripe price is not configured for {plan}.", "error")
-            return redirect(url_for("admin"))
-
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[
-                {
-                    "price": STRIPE_PRICES[plan],
-                    "quantity": 1,
-                }
-            ],
-            success_url=safe_success_url(),
-            cancel_url=safe_cancel_url(),
-            customer_email=row.get("email") or None,
-            metadata={
-                "signup_id": str(id),
-                "fix_and_join": row.get("fix_and_join") or "No",
-                "fix_and_join_fee": row.get("fix_and_join_fee") or "",
-                "selected_plan": row.get("selected_plan") or "",
-            },
+        checkout_session = create_checkout_session(
+            signup_id=id,
+            email=signup.get("email"),
+            plan=plan,
+            fix_join=signup.get("fix_and_join") or "No",
+            fix_and_join_fee=signup.get("fix_and_join_fee") or "",
         )
+        mark_payment_link_generated(id, checkout_session.url, checkout_session.id)
+    except Exception:
+        logger.exception("Failed generating payment link for signup %s", id)
+        flash("Could not generate a new payment link.", "error")
+        return redirect(url_for("admin"))
 
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE signups
-                SET stripe_checkout_url=%s,
-                    payment_status='Link sent',
-                    updated_at=%s
-                WHERE id=%s
-                """,
-                (checkout_session.url, datetime.now(UTC), id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    email_note = ""
+    try:
+        if send_payment_link_email(signup, checkout_session.url):
+            email_note = " and emailed to the customer"
+    except Exception:
+        logger.exception("Failed emailing payment link for signup %s", id)
+        email_note = " but email delivery failed"
 
-    flash("Payment link resent.", "success")
+    flash(f"New payment link generated{email_note}.", "success")
     return redirect(url_for("admin"))
 
 
@@ -1056,23 +1293,18 @@ def resend_payment(id):
 def run_reminders():
     ensure_extra_columns()
 
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT * FROM signups
-                WHERE reminder_sent = FALSE
-                  AND reminder_due_date IS NOT NULL
-                  AND reminder_due_date <= %s
-                  AND payment_status = 'Paid'
-                ORDER BY id ASC
-                """,
-                (datetime.now(UTC),),
-            )
-            rows = cur.fetchall()
-    finally:
-        conn.close()
+    rows = db_execute(
+        """
+        SELECT * FROM signups
+        WHERE reminder_sent = FALSE
+          AND reminder_due_date IS NOT NULL
+          AND reminder_due_date <= %s
+          AND payment_status = 'Paid'
+        ORDER BY id ASC
+        """,
+        (datetime.now(UTC),),
+        fetchall=True,
+    ) or []
 
     sent_count = 0
     for row in rows:
@@ -1081,7 +1313,7 @@ def run_reminders():
                 mark_reminder_sent(row["id"])
                 sent_count += 1
         except Exception:
-            pass
+            logger.exception("Failed sending reminder for signup %s", row.get("id"))
 
     flash(f"Reminder run complete. Emails sent: {sent_count}", "success")
     return redirect(url_for("admin"))
@@ -1092,13 +1324,10 @@ def run_reminders():
 def export_csv():
     ensure_extra_columns()
 
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM signups ORDER BY id DESC")
-            rows = cur.fetchall()
-    finally:
-        conn.close()
+    rows = db_execute(
+        "SELECT * FROM signups ORDER BY id DESC",
+        fetchall=True,
+    ) or []
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -1133,7 +1362,12 @@ def export_csv():
         "Reminder Due Date",
         "Reminder Sent",
         "Reminder Sent At",
+        "Payment Completed At",
+        "Last Payment Link Sent At",
         "Stripe Checkout URL",
+        "Stripe Checkout Session ID",
+        "Stripe Customer ID",
+        "Stripe Subscription ID",
     ])
 
     for row in rows:
@@ -1167,12 +1401,40 @@ def export_csv():
             row.get("reminder_due_date"),
             row.get("reminder_sent"),
             row.get("reminder_sent_at"),
+            row.get("payment_completed_at"),
+            row.get("last_payment_link_sent_at"),
             row.get("stripe_checkout_url"),
+            row.get("stripe_checkout_session_id"),
+            row.get("stripe_customer_id"),
+            row.get("stripe_subscription_id"),
         ])
 
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=sjm_signups.csv"
     return response
+
+
+@app.route("/admin/contract/<int:signup_id>")
+@login_required
+def admin_contract(signup_id):
+    signup = fetch_signup(signup_id)
+    if not signup:
+        flash("Signup not found.", "error")
+        return redirect(url_for("admin"))
+
+    try:
+        pdf_bytes = build_contract_pdf_bytes(signup)
+    except Exception:
+        logger.exception("Failed building PDF for signup %s", signup_id)
+        flash("Could not generate contract PDF.", "error")
+        return redirect(url_for("admin"))
+
+    filename = f"sjm-service-plan-{signup_id}.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @app.errorhandler(404)
@@ -1182,6 +1444,7 @@ def page_not_found(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.exception("Internal server error: %s", error)
     return render_template("500.html"), 500
 
 

@@ -22,8 +22,8 @@
       <nav class="header-links">
         <a href="{{ url_for('index') }}">Home</a>
         <a href="{{ url_for('signup') }}">Sign Up</a>
-        <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
-        <a href="{{ url_for('privacy') }}" target="_blank">Privacy</a>
+        <a href="{{ url_for('terms') }}" target="_blank" rel="noopener noreferrer">Terms</a>
+        <a href="{{ url_for('privacy') }}" target="_blank" rel="noopener noreferrer">Privacy</a>
         <a href="{{ url_for('admin_login') }}">Admin</a>
       </nav>
     </div>
@@ -35,9 +35,9 @@
         <div class="alerts">
           {% for category, message in messages %}
             {% set alert_class = "alert-error" %}
-            {% if category in ["success"] %}
+            {% if category == "success" %}
               {% set alert_class = "alert-success" %}
-            {% elif category in ["warning"] %}
+            {% elif category == "warning" %}
               {% set alert_class = "alert-warning" %}
             {% elif category in ["error", "danger", "login_error"] %}
               {% set alert_class = "alert-error" %}
@@ -72,7 +72,7 @@
         {% endif %}
 
         {% if company_website %}
-          | <a class="text-link" href="{{ company_website }}" target="_blank">Website</a>
+          | <a class="text-link" href="{{ company_website }}" target="_blank" rel="noopener noreferrer">Website</a>
         {% endif %}
       </div>
     </div>
