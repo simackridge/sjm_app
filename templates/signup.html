@@ -9,165 +9,348 @@
 </section>
 
 <div class="card form-card">
-<form method="POST" action="{{ url_for('submit') }}" id="signupForm">
+  <form method="POST" action="{{ url_for('submit') }}" id="signupForm">
 
-  <!-- HONEYPOT -->
-  <input type="text" name="contact_reference" style="display:none">
+    <input type="text" name="contact_reference" style="display:none">
 
-  <!-- STEP 1 -->
-  <div class="step active" id="step1">
-    <h2>Your Details</h2>
+    <!-- STEP 1 -->
+    <div class="step active" id="step1">
+      <h2>Your Details</h2>
 
-    <input name="full_name" placeholder="Full Name *" required>
-    <input name="email" placeholder="Email *" required>
-    <input name="phone" placeholder="Phone">
+      <input name="full_name" placeholder="Full Name *" required>
+      <input name="email" placeholder="Email *" required>
+      <input name="phone" placeholder="Phone">
 
-    <button type="button" onclick="nextStep(2)">Next</button>
-  </div>
+      <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next</button>
+    </div>
 
-  <!-- STEP 2 ADDRESS -->
-  <div class="step" id="step2">
-    <h2>Your Address</h2>
+    <!-- STEP 2 ADDRESS -->
+    <div class="step" id="step2">
+      <h2>Your Address</h2>
 
-    <input id="postcode" name="postcode" placeholder="Postcode *" required>
-    <button type="button" onclick="lookupPostcode()">Lookup Address</button>
+      <div class="field">
+        <label for="postcode">Postcode *</label>
+        <div style="display:flex; gap:10px;">
+          <input id="postcode" name="postcode" placeholder="Postcode *" required>
+          <button type="button" class="btn btn-secondary" id="lookupBtn" onclick="lookupPostcode()">Lookup</button>
+        </div>
+      </div>
 
-    <input id="address1" name="address_line_1" placeholder="Address Line 1 *" required>
-    <input name="address_line_2" placeholder="Address Line 2">
-    <input id="city" name="city" placeholder="City *" required>
+      <div id="lookupMessage" class="note-box" style="display:none; margin-top:12px;"></div>
 
-    <button type="button" onclick="nextStep(3)">Next</button>
-  </div>
+      <div class="field" style="margin-top:14px;">
+        <label for="address1">Address Line 1 *</label>
+        <input id="address1" name="address_line_1" placeholder="House number and street *" required>
+      </div>
 
-  <!-- STEP 3 BOILER -->
-  <div class="step" id="step3">
-    <h2>Your Boiler</h2>
+      <div class="field" style="margin-top:14px;">
+        <label for="address2">Address Line 2</label>
+        <input id="address2" name="address_line_2" placeholder="Address Line 2">
+      </div>
 
-    <select id="broken" name="boiler_broken" onchange="updateFlow()">
-      <option value="">Is your boiler broken? *</option>
-      <option value="No">No</option>
-      <option value="Yes">Yes</option>
-    </select>
+      <div class="field" style="margin-top:14px;">
+        <label for="city">Town / City *</label>
+        <input id="city" name="city" placeholder="Town / City *" required>
+      </div>
 
-    <div id="extraQuestions">
-      <select id="under3" name="boiler_under_3_years">
-        <option value="">Under 3 years old?</option>
-        <option>Yes</option>
-        <option>No</option>
+      <div style="margin-top:18px;">
+        <button type="button" class="btn btn-primary" onclick="goToBoilerStep()">Next</button>
+      </div>
+    </div>
+
+    <!-- STEP 3 BOILER -->
+    <div class="step" id="step3">
+      <h2>Your Boiler</h2>
+
+      <select id="broken" name="boiler_broken" onchange="updateFlow()" required>
+        <option value="">Is your boiler broken? *</option>
+        <option value="No">No</option>
+        <option value="Yes">Yes</option>
       </select>
 
-      <select id="warranty" name="boiler_warranty_valid">
-        <option value="">Still under warranty?</option>
-        <option>Yes</option>
-        <option>No</option>
-      </select>
+      <div id="extraQuestions" style="margin-top:16px;">
+        <select id="under3" name="boiler_under_3_years">
+          <option value="">Under 3 years old?</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
+        </select>
+
+        <select id="warranty" name="boiler_warranty_valid" style="margin-top:12px;">
+          <option value="">Still under warranty?</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
+        </select>
+      </div>
+
+      <div style="margin-top:18px;">
+        <button type="button" class="btn btn-primary" onclick="goToPlanStep()">Next</button>
+      </div>
     </div>
 
-    <button type="button" onclick="nextStep(4)">Next</button>
-  </div>
+    <!-- STEP 4 PLAN -->
+    <div class="step" id="step4">
+      <h2>Select Plan</h2>
 
-  <!-- STEP 4 PLAN -->
-  <div class="step" id="step4">
-    <h2>Select Plan</h2>
+      <select id="plan" name="selected_plan" required></select>
 
-    <select id="plan" name="selected_plan" required></select>
+      <div id="fixJoinBox" class="note-box" style="display:none; margin-top:14px;">
+        ⚠️ Your boiler is broken — Fix & Join fee of £{{ fix_and_join_fee }} applies.
+      </div>
 
-    <div id="fixJoinBox" class="note-box" style="display:none;">
-      ⚠️ Your boiler is broken — Fix & Join fee of £{{ fix_and_join_fee }} applies.
+      <div style="margin-top:18px;">
+        <button type="button" class="btn btn-primary" onclick="goToAgreementStep()">Next</button>
+      </div>
     </div>
 
-    <button type="button" onclick="nextStep(5)">Next</button>
-  </div>
+    <!-- STEP 5 SIGNATURE -->
+    <div class="step" id="step5">
+      <h2>Agreement</h2>
 
-  <!-- STEP 5 SIGNATURE -->
-  <div class="step" id="step5">
-    <h2>Agreement</h2>
+      <input name="signature_name" placeholder="Type your full name *" required>
 
-    <input name="signature_name" placeholder="Type your full name *" required>
+      <p style="margin-top:16px;">Draw your signature:</p>
+      <canvas id="signaturePad" width="300" height="150"></canvas>
+      <input type="hidden" name="signature_data" id="signatureData">
 
-    <p>Draw your signature:</p>
-    <canvas id="signaturePad" width="300" height="150"></canvas>
-    <input type="hidden" name="signature_data" id="signatureData">
+      <div class="checkboxes">
+        <label>
+          <input type="checkbox" name="accepted_terms" required>
+          I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
+        </label>
 
-    <div class="checkboxes">
-      <label>
-        <input type="checkbox" name="accepted_terms" required>
-        I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
-      </label>
+        <label>
+          <input type="checkbox" name="accepted_privacy" required>
+          I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a>
+        </label>
 
-      <label>
-        <input type="checkbox" name="accepted_privacy" required>
-        I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a>
-      </label>
+        <label>
+          <input type="checkbox" name="accepted_fair_usage" required>
+          I accept the Fair Usage Policy
+        </label>
+      </div>
 
-      <label>
-        <input type="checkbox" name="accepted_fair_usage" required>
-        I accept the Fair Usage Policy
-      </label>
+      <div style="margin-top:18px;">
+        <button type="submit" class="btn btn-primary">Continue to Payment</button>
+      </div>
     </div>
 
-    <button type="submit">Continue to Payment</button>
-  </div>
-
-</form>
+  </form>
 </div>
 
 <style>
 .step { display:none; }
 .step.active { display:block; }
-canvas { border:1px solid #ccc; margin-top:10px; }
+
+canvas {
+  border: 2px solid #ddd;
+  background: #ffffff;   /* THIS FIXES BLACK BACKGROUND */
+  border-radius: 6px;
+  touch-action: none;
+}
 </style>
 
 <script>
-// STEP NAV
 function nextStep(step){
-  document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
-  document.getElementById('step'+step).classList.add('active');
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step' + step).classList.add('active');
 }
 
-// FLOW LOGIC
+function goToBoilerStep(){
+  const postcode = document.getElementById('postcode').value.trim();
+  const address1 = document.getElementById('address1').value.trim();
+  const city = document.getElementById('city').value.trim();
+
+  if (!postcode || !address1 || !city) {
+    alert('Please complete postcode, address line 1, and town/city.');
+    return;
+  }
+
+  nextStep(3);
+}
+
+function goToPlanStep(){
+  const broken = document.getElementById('broken').value;
+  const under3 = document.getElementById('under3').value;
+  const warranty = document.getElementById('warranty').value;
+
+  if (!broken) {
+    alert('Please choose whether the boiler is broken.');
+    return;
+  }
+
+  if (broken === 'No' && (!under3 || !warranty)) {
+    alert('Please answer the age and warranty questions.');
+    return;
+  }
+
+  updateFlow();
+  nextStep(4);
+}
+
+function goToAgreementStep(){
+  const plan = document.getElementById('plan').value;
+  if (!plan) {
+    alert('Please select a plan.');
+    return;
+  }
+  nextStep(5);
+}
+
 function updateFlow(){
-  let broken=document.getElementById('broken').value;
-  let plan=document.getElementById('plan');
-  let fixBox=document.getElementById('fixJoinBox');
+  let broken = document.getElementById('broken').value;
+  let plan = document.getElementById('plan');
+  let fixBox = document.getElementById('fixJoinBox');
+  let extraQuestions = document.getElementById('extraQuestions');
 
-  plan.innerHTML="";
+  plan.innerHTML = '';
 
-  if(broken==="Yes"){
-    plan.innerHTML='<option value=\"Standard\">Standard</option><option value=\"Complete\">Complete</option>';
-    fixBox.style.display="block";
-    document.getElementById('extraQuestions').style.display="none";
+  if (broken === 'Yes') {
+    plan.innerHTML = `
+      <option value="Standard">Standard</option>
+      <option value="Complete">Complete</option>
+    `;
+    fixBox.style.display = 'block';
+    extraQuestions.style.display = 'none';
+    document.getElementById('under3').value = '';
+    document.getElementById('warranty').value = '';
   } else {
-    plan.innerHTML='<option value=\"Essential\">Essential</option><option value=\"Standard\">Standard</option><option value=\"Complete\">Complete</option>';
-    fixBox.style.display="none";
-    document.getElementById('extraQuestions').style.display="block";
+    plan.innerHTML = `
+      <option value="Essential">Essential</option>
+      <option value="Standard">Standard</option>
+      <option value="Complete">Complete</option>
+    `;
+    fixBox.style.display = 'none';
+    extraQuestions.style.display = 'block';
   }
 }
 
-// POSTCODE LOOKUP
-function lookupPostcode(){
-  let pc=document.getElementById('postcode').value;
+let lookupRunning = false;
 
-  fetch('/api/postcode-lookup?postcode='+pc)
-  .then(res=>res.json())
-  .then(data=>{
-    document.getElementById('city').value=data.city || '';
-  });
+function lookupPostcode(){
+  if (lookupRunning) return;
+
+  let pc = document.getElementById('postcode').value.trim();
+  let btn = document.getElementById('lookupBtn');
+  let message = document.getElementById('lookupMessage');
+
+  if (!pc) {
+    alert('Please enter a postcode first.');
+    return;
+  }
+
+  lookupRunning = true;
+  btn.disabled = true;
+  btn.innerText = 'Looking up...';
+  message.style.display = 'none';
+
+  fetch('/api/postcode-lookup?postcode=' + encodeURIComponent(pc))
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        message.style.display = 'block';
+        message.innerHTML = 'Postcode lookup failed. Please enter the address manually.';
+        return;
+      }
+
+      document.getElementById('postcode').value = data.postcode || pc.toUpperCase();
+      document.getElementById('city').value = data.city || '';
+
+      message.style.display = 'block';
+      message.innerHTML = 'Postcode found. Please enter the house number and street manually.';
+    })
+    .catch(() => {
+      message.style.display = 'block';
+      message.innerHTML = 'Lookup failed. Please enter the address manually.';
+    })
+    .finally(() => {
+      lookupRunning = false;
+      btn.disabled = false;
+      btn.innerText = 'Lookup';
+    });
 }
 
 // SIGNATURE PAD
-let canvas=document.getElementById('signaturePad');
-let ctx=canvas.getContext('2d');
-let drawing=false;
+<script>
+let canvas = document.getElementById('signaturePad');
+let ctx = canvas.getContext('2d');
 
-canvas.addEventListener('mousedown',()=>drawing=true);
-canvas.addEventListener('mouseup',()=>drawing=false);
-canvas.addEventListener('mousemove',e=>{
-  if(!drawing) return;
-  ctx.lineTo(e.offsetX,e.offsetY);
+let drawing = false;
+
+// SET PEN STYLE (THIS FIXES IT)
+ctx.strokeStyle = "#000000";   // BLACK PEN
+ctx.lineWidth = 2;
+ctx.lineCap = "round";
+
+// Make background white (important for PDF too)
+ctx.fillStyle = "#ffffff";
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+function startDraw(e) {
+  drawing = true;
+  ctx.beginPath();
+  const rect = canvas.getBoundingClientRect();
+  ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+}
+
+function draw(e) {
+  if (!drawing) return;
+
+  const rect = canvas.getBoundingClientRect();
+  ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
   ctx.stroke();
-  document.getElementById('signatureData').value=canvas.toDataURL();
+
+  document.getElementById('signatureData').value = canvas.toDataURL("image/png");
+}
+
+function stopDraw() {
+  drawing = false;
+}
+
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', stopDraw);
+canvas.addEventListener('mouseleave', stopDraw);
+
+// TOUCH SUPPORT (mobile)
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  startDraw(e.touches[0]);
 });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  draw(e.touches[0]);
+});
+
+canvas.addEventListener('touchend', stopDraw);
+
+// CLEAR BUTTON (optional but recommended)
+function clearSignature() {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('signatureData').value = "";
+}
 </script>
 
+canvas.addEventListener('mousedown', (e) => {
+  drawing = true;
+  ctx.beginPath();
+  ctx.moveTo(e.offsetX, e.offsetY);
+});
+
+canvas.addEventListener('mouseup', () => {
+  drawing = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  drawing = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!drawing) return;
+  ctx.lineTo(e.offsetX, e.offsetY);
+  ctx.stroke();
+  document.getElementById('signatureData').value = canvas.toDataURL();
+});
+</script>
 {% endblock %}
