@@ -24,6 +24,7 @@ import stripe
 import resend
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import Binary
 import requests
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -101,6 +102,9 @@ PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
+
+# Optional if you later add it
+FAIR_USAGE_PDF_FILENAME = os.environ.get("FAIR_USAGE_PDF_FILENAME", "")
 
 # -----------------------------------------------------------------------------
 # TEMPLATE GLOBALS
@@ -203,7 +207,7 @@ def validate_required_env():
 
 
 def docs_file_exists(filename):
-    return os.path.exists(os.path.join(DOCS_DIR, filename))
+    return bool(filename) and os.path.exists(os.path.join(DOCS_DIR, filename))
 
 
 def build_full_address(row):
@@ -346,6 +350,54 @@ def mark_signup_paid(signup_id, checkout=None):
     )
 
 
+def get_stored_contract_pdf_bytes(signup):
+    pdf_value = signup.get("contract_pdf")
+    if not pdf_value:
+        return None
+
+    if isinstance(pdf_value, memoryview):
+        return pdf_value.tobytes()
+
+    if isinstance(pdf_value, bytes):
+        return pdf_value
+
+    return bytes(pdf_value)
+
+
+def save_contract_pdf_to_db(signup_id, pdf_bytes):
+    now = datetime.now(UTC)
+    filename = f"sjm-service-plan-{signup_id}.pdf"
+
+    db_execute(
+        """
+        UPDATE signups
+        SET contract_pdf=%s,
+            contract_pdf_filename=%s,
+            contract_pdf_generated_at=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (Binary(pdf_bytes), filename, now, now, signup_id),
+        commit=True,
+    )
+
+
+def get_or_create_contract_pdf_bytes(signup_id):
+    signup = fetch_signup(signup_id)
+    if not signup:
+        return None, None
+
+    stored_pdf = get_stored_contract_pdf_bytes(signup)
+    if stored_pdf:
+        return stored_pdf, signup
+
+    pdf_bytes = build_contract_pdf_bytes(signup)
+    save_contract_pdf_to_db(signup_id, pdf_bytes)
+
+    refreshed_signup = fetch_signup(signup_id)
+    return pdf_bytes, refreshed_signup
+
+
 def ensure_extra_columns():
     conn = get_db_connection()
     try:
@@ -363,7 +415,10 @@ def ensure_extra_columns():
                 ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT,
                 ADD COLUMN IF NOT EXISTS payment_completed_at TIMESTAMP,
-                ADD COLUMN IF NOT EXISTS last_payment_link_sent_at TIMESTAMP
+                ADD COLUMN IF NOT EXISTS last_payment_link_sent_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS contract_pdf BYTEA,
+                ADD COLUMN IF NOT EXISTS contract_pdf_filename TEXT,
+                ADD COLUMN IF NOT EXISTS contract_pdf_generated_at TIMESTAMP
                 """
             )
         conn.commit()
@@ -640,6 +695,49 @@ def build_contract_pdf_bytes(signup):
     return buffer.read()
 
 # -----------------------------------------------------------------------------
+# EMAIL ATTACHMENTS
+# -----------------------------------------------------------------------------
+
+def load_pdf_attachment_from_docs(filename):
+    if not filename:
+        return None
+
+    path = os.path.join(DOCS_DIR, filename)
+    if not os.path.exists(path):
+        logger.warning("Attachment file missing: %s", path)
+        return None
+
+    with open(path, "rb") as f:
+        return {
+            "filename": filename,
+            "content": base64.b64encode(f.read()).decode("utf-8"),
+        }
+
+
+def build_email_attachments(signup, contract_pdf_bytes):
+    attachments = [
+        {
+            "filename": signup.get("contract_pdf_filename") or f"sjm-service-plan-{signup.get('id')}.pdf",
+            "content": base64.b64encode(contract_pdf_bytes).decode("utf-8"),
+        }
+    ]
+
+    terms_attachment = load_pdf_attachment_from_docs(TERMS_PDF_FILENAME)
+    if terms_attachment:
+        attachments.append(terms_attachment)
+
+    privacy_attachment = load_pdf_attachment_from_docs(PRIVACY_PDF_FILENAME)
+    if privacy_attachment:
+        attachments.append(privacy_attachment)
+
+    if FAIR_USAGE_PDF_FILENAME:
+        fair_usage_attachment = load_pdf_attachment_from_docs(FAIR_USAGE_PDF_FILENAME)
+        if fair_usage_attachment:
+            attachments.append(fair_usage_attachment)
+
+    return attachments
+
+# -----------------------------------------------------------------------------
 # EMAIL
 # -----------------------------------------------------------------------------
 
@@ -664,7 +762,12 @@ def send_customer_confirmation_email(signup, pdf_bytes):
       <p><strong>Plan:</strong> {signup.get('selected_plan') or '-'} - £{signup.get('monthly_price') or '-'} / month</p>
       {fix_join_html}
 
-      <p>Your signed agreement is attached as a PDF.</p>
+      <p>Attached to this email you will find:</p>
+      <ul>
+        <li>Your signed service plan agreement</li>
+        <li>Our Terms and Conditions PDF</li>
+        <li>Our Privacy Policy PDF</li>
+      </ul>
 
       <p><strong>What happens next:</strong></p>
       <ul>
@@ -677,18 +780,15 @@ def send_customer_confirmation_email(signup, pdf_bytes):
     </div>
     """
 
+    attachments = build_email_attachments(signup, pdf_bytes)
+
     resend.Emails.send(
         {
             "from": RESEND_FROM_EMAIL,
             "to": [signup["email"]],
             "subject": f"Your {COMPANY_NAME} Service Plan Confirmation",
             "html": html,
-            "attachments": [
-                {
-                    "filename": f"sjm-service-plan-{signup.get('id')}.pdf",
-                    "content": base64.b64encode(pdf_bytes).decode("utf-8"),
-                }
-            ],
+            "attachments": attachments,
         }
     )
     return True
@@ -713,9 +813,16 @@ def send_admin_notification_email(signup, pdf_bytes):
       <p><strong>Fix &amp; Join:</strong> {signup.get('fix_and_join') or 'No'}</p>
       <p><strong>Fix &amp; Join Fee:</strong> £{signup.get('fix_and_join_fee') or '-'}</p>
 
-      <p>The signed agreement PDF is attached.</p>
+      <p>Attached:</p>
+      <ul>
+        <li>Signed agreement PDF</li>
+        <li>Terms PDF</li>
+        <li>Privacy PDF</li>
+      </ul>
     </div>
     """
+
+    attachments = build_email_attachments(signup, pdf_bytes)
 
     resend.Emails.send(
         {
@@ -723,12 +830,7 @@ def send_admin_notification_email(signup, pdf_bytes):
             "to": [ADMIN_NOTIFICATION_EMAIL],
             "subject": f"New Service Plan Signup - {signup.get('full_name') or 'Customer'}",
             "html": html,
-            "attachments": [
-                {
-                    "filename": f"sjm-service-plan-{signup.get('id')}.pdf",
-                    "content": base64.b64encode(pdf_bytes).decode("utf-8"),
-                }
-            ],
+            "attachments": attachments,
         }
     )
     return True
@@ -820,7 +922,10 @@ def send_post_payment_emails(signup_id):
         logger.warning("Signup %s not found for post-payment emails.", signup_id)
         return
 
-    pdf_bytes = build_contract_pdf_bytes(signup)
+    pdf_bytes, signup = get_or_create_contract_pdf_bytes(signup_id)
+    if not pdf_bytes or not signup:
+        logger.error("Could not build or fetch contract PDF for signup %s", signup_id)
+        return
 
     if not signup.get("customer_email_sent"):
         try:
@@ -1149,11 +1254,6 @@ def stripe_success():
     return redirect(url_for("success", signup_id=signup_id))
 
 
-@app.route("/stripe/cancel")
-def stripe_cancel():
-    return render_template("stripe_cancel.html")
-
-
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
@@ -1188,6 +1288,11 @@ def stripe_webhook():
         return {"error": "Webhook processing failed"}, 500
 
     return {"received": True}, 200
+
+
+@app.route("/stripe/cancel")
+def stripe_cancel():
+    return render_template("stripe_cancel.html")
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -1364,6 +1469,9 @@ def export_csv():
         "Reminder Sent At",
         "Payment Completed At",
         "Last Payment Link Sent At",
+        "Contract PDF Stored",
+        "Contract PDF Filename",
+        "Contract PDF Generated At",
         "Stripe Checkout URL",
         "Stripe Checkout Session ID",
         "Stripe Customer ID",
@@ -1403,6 +1511,9 @@ def export_csv():
             row.get("reminder_sent_at"),
             row.get("payment_completed_at"),
             row.get("last_payment_link_sent_at"),
+            "Yes" if row.get("contract_pdf") else "No",
+            row.get("contract_pdf_filename"),
+            row.get("contract_pdf_generated_at"),
             row.get("stripe_checkout_url"),
             row.get("stripe_checkout_session_id"),
             row.get("stripe_customer_id"),
@@ -1423,13 +1534,18 @@ def admin_contract(signup_id):
         return redirect(url_for("admin"))
 
     try:
-        pdf_bytes = build_contract_pdf_bytes(signup)
+        pdf_bytes = get_stored_contract_pdf_bytes(signup)
+        if not pdf_bytes:
+            pdf_bytes = build_contract_pdf_bytes(signup)
+            save_contract_pdf_to_db(signup_id, pdf_bytes)
+            signup = fetch_signup(signup_id)
+
+        filename = signup.get("contract_pdf_filename") or f"sjm-service-plan-{signup_id}.pdf"
     except Exception:
-        logger.exception("Failed building PDF for signup %s", signup_id)
+        logger.exception("Failed building or loading PDF for signup %s", signup_id)
         flash("Could not generate contract PDF.", "error")
         return redirect(url_for("admin"))
 
-    filename = f"sjm-service-plan-{signup_id}.pdf"
     return Response(
         pdf_bytes,
         mimetype="application/pdf",

@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-header">
   <h1>Admin Dashboard</h1>
-  <p>Manage signups, payments, locations, and service reminders.</p>
+  <p>Manage signups, payments, locations, documents, and service reminders.</p>
 </section>
 
 <div class="admin-top-bar">
@@ -54,8 +54,9 @@
             <th>Emails</th>
             <th>Reminder</th>
             <th>Payment</th>
+            <th>PDF</th>
             <th>Map</th>
-            <th>Action</th>
+            <th>Actions</th>
           </tr>
         </thead>
 
@@ -64,14 +65,19 @@
             <tr>
               <td>#{{ s.id }}</td>
 
-              <td>{{ s.created_at }}</td>
-
               <td>
-                <strong>{{ s.full_name }}</strong>
+                <div>{{ s.created_at or "-" }}</div>
+                {% if s.updated_at %}
+                  <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ s.updated_at }}</div>
+                {% endif %}
               </td>
 
               <td>
-                <div>{{ s.email }}</div>
+                <strong>{{ s.full_name or "-" }}</strong>
+              </td>
+
+              <td>
+                <div>{{ s.email or "-" }}</div>
                 <div>{{ s.phone or "-" }}</div>
               </td>
 
@@ -162,6 +168,13 @@
                   <span class="status-pill pending">{{ s.payment_status or "Not sent" }}</span>
                 {% endif %}
 
+                {% if s.payment_completed_at %}
+                  <div style="margin-top:8px;">
+                    <strong>Paid at:</strong><br>
+                    {{ s.payment_completed_at }}
+                  </div>
+                {% endif %}
+
                 {% if s.stripe_checkout_url %}
                   <div class="small-link-wrap">
                     <a href="{{ s.stripe_checkout_url }}" target="_blank" rel="noopener noreferrer">Open payment link</a>
@@ -170,14 +183,51 @@
               </td>
 
               <td>
-                <div><a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a></div>
-                <div><a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a></div>
+                <div>
+                  Stored:
+                  {% if s.contract_pdf %}
+                    <span class="status-pill paid">Yes</span>
+                  {% else %}
+                    <span class="status-pill pending">No</span>
+                  {% endif %}
+                </div>
+
+                <div style="margin-top:8px;">
+                  <a href="{{ url_for('admin_contract', signup_id=s.id) }}" target="_blank" rel="noopener noreferrer">
+                    View PDF
+                  </a>
+                </div>
+
+                {% if s.contract_pdf_generated_at %}
+                  <div style="margin-top:8px;">
+                    <strong>Generated:</strong><br>
+                    {{ s.contract_pdf_generated_at }}
+                  </div>
+                {% endif %}
               </td>
 
               <td>
-                <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
-                  <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
-                </form>
+                <div>
+                  <a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a>
+                </div>
+                <div style="margin-top:8px;">
+                  <a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a>
+                </div>
+              </td>
+
+              <td>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                  <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
+                    <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
+                  </form>
+
+                  <a href="{{ url_for('admin_contract', signup_id=s.id) }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="btn btn-secondary btn-small">
+                    View PDF
+                  </a>
+                </div>
               </td>
             </tr>
           {% endfor %}
