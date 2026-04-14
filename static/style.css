@@ -394,17 +394,35 @@ textarea:focus{
 }
 
 /* ---------------------------------
-   SIGNUP PAGE
+/* ---------------------------------
+   SIGNUP ELITE POLISH
 --------------------------------- */
+
 .signup-card{
+  max-width:860px;
   border:1px solid rgba(255,255,255,0.08);
-  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  background:
+    radial-gradient(circle at top right, rgba(255,106,0,0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+}
+
+.step{
+  display:none;
+}
+
+.step.active{
+  display:block;
+}
+
+.step h2{
+  margin:0 0 10px;
+  font-size:1.7rem;
 }
 
 .step-badge{
   display:inline-block;
   margin-bottom:12px;
-  padding:6px 10px;
+  padding:7px 12px;
   border-radius:999px;
   background:rgba(255,106,0,0.12);
   border:1px solid rgba(255,106,0,0.25);
@@ -414,9 +432,10 @@ textarea:focus{
 }
 
 .step-intro{
-  margin:0 0 20px;
+  margin:0 0 22px;
   color:var(--muted);
-  line-height:1.6;
+  line-height:1.7;
+  max-width:640px;
 }
 
 .field-group{
@@ -437,12 +456,13 @@ textarea:focus{
 
 .lookup-btn{
   white-space:nowrap;
+  min-width:120px;
 }
 
 .step-actions{
   display:flex;
   gap:12px;
-  margin-top:22px;
+  margin-top:24px;
   flex-wrap:wrap;
 }
 
@@ -453,12 +473,18 @@ textarea:focus{
   margin-top:16px;
 }
 
+.warning-box{
+  background:rgba(255,106,0,0.08);
+  border:1px solid rgba(255,106,0,0.28);
+  color:#ffd8bf;
+}
+
 .signature-wrap{
-  margin-top:18px;
+  margin-top:20px;
   padding:18px;
   border:1px solid var(--border);
   border-radius:18px;
-  background:rgba(255,255,255,0.02);
+  background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
 }
 
 .signature-header{
@@ -474,17 +500,39 @@ textarea:focus{
   width:100%;
   height:220px;
   display:block;
-  border:1px solid rgba(255,255,255,0.08);
   background:#ffffff;
+  border:1px solid rgba(255,255,255,0.08);
   border-radius:14px;
-  cursor:crosshair;
   touch-action:none;
+  cursor:crosshair;
+}
 }
 
-.warning-box{
-  background:rgba(255,106,0,0.08);
-  border:1px solid rgba(255,106,0,0.28);
-  color:#ffd8bf;
+.checkboxes{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin-top:18px;
+  color:var(--muted);
+}
+
+.checkboxes label{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  line-height:1.6;
+}
+
+.checkboxes input[type="checkbox"]{
+  width:auto;
+  margin-top:3px;
+  transform:scale(1.12);
+}
+
+.checkboxes a{
+  color:#ffffff;
+  text-decoration:underline;
+  text-underline-offset:2px;
 }
 
 @media (max-width: 760px){

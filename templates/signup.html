@@ -169,6 +169,10 @@ function nextStep(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step' + step).classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (step === 5) {
+    setTimeout(resizeCanvas, 50);
+  }
 }
 
 function goToAddressStep() {
@@ -311,27 +315,49 @@ function lookupPostcode() {
     });
 }
 
-// Signature canvas
+// -------------------------
+// Signature pad
+// -------------------------
 const canvas = document.getElementById('signaturePad');
 const ctx = canvas.getContext('2d');
+const signatureInput = document.getElementById('signatureData');
+
 let drawing = false;
+let hasSignature = false;
+
+function setupPen() {
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+}
 
 function resizeCanvas() {
   const ratio = Math.max(window.devicePixelRatio || 1, 1);
   const rect = canvas.getBoundingClientRect();
 
+  if (!rect.width || !rect.height) return;
+
+  const oldData = hasSignature ? canvas.toDataURL('image/png') : null;
+
   canvas.width = rect.width * ratio;
   canvas.height = rect.height * ratio;
 
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, rect.width, rect.height);
-  ctx.strokeStyle = '#111111';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
 
-  document.getElementById('signatureData').value = '';
+  setupPen();
+
+  if (oldData) {
+    const img = new Image();
+    img.onload = function () {
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      signatureInput.value = canvas.toDataURL('image/png');
+    };
+    img.src = oldData;
+  }
 }
 
 function getCoords(e) {
@@ -340,6 +366,12 @@ function getCoords(e) {
     x: e.clientX - rect.left,
     y: e.clientY - rect.top
   };
+}
+
+function saveSignature() {
+  if (hasSignature) {
+    signatureInput.value = canvas.toDataURL('image/png');
+  }
 }
 
 function startDraw(e) {
@@ -354,15 +386,22 @@ function draw(e) {
   const pos = getCoords(e);
   ctx.lineTo(pos.x, pos.y);
   ctx.stroke();
-  document.getElementById('signatureData').value = canvas.toDataURL('image/png');
+  hasSignature = true;
 }
 
 function stopDraw() {
+  if (!drawing) return;
   drawing = false;
+  saveSignature();
 }
 
 function clearSignature() {
-  resizeCanvas();
+  const rect = canvas.getBoundingClientRect();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  setupPen();
+  hasSignature = false;
+  signatureInput.value = '';
 }
 
 canvas.addEventListener('mousedown', startDraw);
@@ -385,9 +424,27 @@ canvas.addEventListener('touchend', (e) => {
   stopDraw();
 }, { passive: false });
 
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', () => {
+  if (document.getElementById('step5').classList.contains('active')) {
+    resizeCanvas();
+  }
+});
+
+document.getElementById('signupForm').addEventListener('submit', function(e) {
+  saveSignature();
+
+  if (!signatureInput.value) {
+    e.preventDefault();
+    alert('Please provide your drawn signature.');
+    nextStep(5);
+  }
+});
 
 updateFlow();
-setTimeout(resizeCanvas, 50);
+setTimeout(() => {
+  if (document.getElementById('step5').classList.contains('active')) {
+    resizeCanvas();
+  }
+}, 50);
 </script>
 {% endblock %}
