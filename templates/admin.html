@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-header">
   <h1>Admin Dashboard</h1>
-  <p>Manage signups, payments, locations, documents, and service reminders.</p>
+  <p>Manage signups, payments, documents, and service reminders.</p>
 </section>
 
 <div class="admin-top-bar">
@@ -29,12 +29,12 @@
   <div class="admin-actions">
     <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export CSV</a>
 
-    <form method="POST" action="{{ url_for('regenerate_pdfs') }}" style="display:inline;">
-  <button type="submit" class="btn btn-secondary">Regenerate PDFs</button>
-</form>
-
     <form method="POST" action="{{ url_for('run_reminders') }}" style="display:inline;">
       <button type="submit" class="btn btn-primary">Run reminders</button>
+    </form>
+
+    <form method="POST" action="{{ url_for('regenerate_pdfs') }}" style="display:inline;">
+      <button type="submit" class="btn btn-secondary">Regenerate PDFs</button>
     </form>
 
     <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">Log out</a>

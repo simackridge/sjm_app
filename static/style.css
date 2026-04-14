@@ -843,3 +843,93 @@ textarea:focus{
     flex-direction:column;
   }
 }
+/* ---------------------------------
+   SUCCESS PAGE POLISH
+--------------------------------- */
+
+.success-wrap{
+  display:flex;
+  justify-content:center;
+  padding:40px 0;
+}
+
+.success-card{
+  background:#171717;
+  border:1px solid #2f2f2f;
+  border-radius:20px;
+  padding:40px;
+  max-width:520px;
+  width:100%;
+  text-align:center;
+  box-shadow:0 10px 30px rgba(0,0,0,0.4);
+}
+
+.success-icon{
+  width:60px;
+  height:60px;
+  background:#ff6a00;
+  color:#fff;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  font-weight:bold;
+  margin:0 auto 20px;
+}
+
+.success-card h1{
+  margin:0 0 12px;
+}
+
+.success-sub{
+  color:#c5c5c5;
+  margin-bottom:20px;
+  line-height:1.6;
+}
+
+.success-summary{
+  background:#202020;
+  padding:16px;
+  border-radius:12px;
+  margin-bottom:20px;
+  text-align:left;
+  line-height:1.7;
+}
+
+.success-next{
+  text-align:left;
+  margin-bottom:20px;
+}
+
+.success-next h3{
+  margin:0 0 10px;
+}
+
+.success-next ul{
+  padding-left:18px;
+  margin:0;
+  line-height:1.8;
+  color:#c5c5c5;
+}
+
+.success-actions{
+  display:flex;
+  gap:12px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+
+@media (max-width: 760px){
+  .success-card{
+    padding:28px 22px;
+  }
+
+  .success-actions{
+    flex-direction:column;
+  }
+
+  .success-actions .btn{
+    width:100%;
+  }
+}

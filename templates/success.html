@@ -1,56 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Success{% endblock %}
+{% block title %}Success | {{ company_name }}{% endblock %}
 
 {% block content %}
-<section class="page-header">
-  <h1>Thanks — your signup is complete</h1>
-  <p>Your payment has been received and your service plan application is now with us.</p>
-</section>
+<div class="success-wrap">
+  <div class="success-card">
+    <div class="success-icon">✓</div>
 
-<div class="card success-card">
-  {% if signup %}
-    <div class="summary-card">
-      <h2>Your details</h2>
+    <h1>You're all set</h1>
+    <p class="success-sub">
+      Your service plan is now active. Everything has been set up successfully.
+    </p>
 
-      <div class="summary-grid">
-        <div><strong>Name:</strong> {{ signup.full_name or "-" }}</div>
-        <div><strong>Email:</strong> {{ signup.email or "-" }}</div>
-        <div><strong>Phone:</strong> {{ signup.phone or "-" }}</div>
-        <div><strong>Plan:</strong> {{ signup.selected_plan or "-" }}</div>
-
-        <div><strong>Monthly price:</strong> £{{ signup.monthly_price or "-" }}</div>
-        <div><strong>Payment status:</strong> {{ signup.payment_status or "-" }}</div>
-
-        <div><strong>Address:</strong> {{ signup.address_line_1 or "-" }}</div>
-        <div><strong>Town / City:</strong> {{ signup.city or "-" }}</div>
-
-        {% if signup.address_line_2 %}
-          <div><strong>Address line 2:</strong> {{ signup.address_line_2 }}</div>
-        {% endif %}
-
-        <div><strong>Postcode:</strong> {{ signup.postcode or "-" }}</div>
-
-        <div><strong>Boiler broken:</strong> {{ signup.boiler_broken or "-" }}</div>
-        <div><strong>Fix &amp; Join:</strong> {{ signup.fix_and_join or "No" }}</div>
-
-        {% if signup.fix_and_join == "Yes" %}
-          <div><strong>Fix &amp; Join fee:</strong> £{{ signup.fix_and_join_fee or fix_and_join_fee }}</div>
-          <div><strong>Important:</strong> Subject to inspection and suitability</div>
-        {% endif %}
-      </div>
+    {% if signup %}
+    <div class="success-summary">
+      <div><strong>Name:</strong> {{ signup.full_name }}</div>
+      <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
+      <div><strong>Monthly:</strong> £{{ signup.monthly_price }}</div>
     </div>
-  {% endif %}
+    {% endif %}
 
-  <div class="note-box">
-    <strong>What happens next:</strong><br>
-    We’ll review your signup and send your agreement by email. If your plan includes Fix &amp; Join,
-    we’ll confirm the next steps for inspection and repair.
-  </div>
+    <div class="success-next">
+      <h3>What happens next?</h3>
+      <ul>
+        <li>We’ll review your signup</li>
+        <li>We’ll contact you if anything is needed</li>
+        <li>Your cover is now live</li>
+      </ul>
+    </div>
 
-  <div class="hero-actions" style="margin-top: 20px;">
-    <a href="{{ url_for('index') }}" class="btn btn-primary">Back to home</a>
-    <a href="{{ url_for('signup') }}" class="btn btn-secondary">Start another signup</a>
+    <div class="success-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to home</a>
+      <a href="tel:{{ company_phone }}" class="btn btn-primary">Call us</a>
+    </div>
   </div>
 </div>
 {% endblock %}

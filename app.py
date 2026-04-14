@@ -733,35 +733,48 @@ def send_customer_confirmation_email(signup, pdf_bytes):
     fix_join_html = ""
     if signup.get("fix_and_join") == "Yes":
         fix_join_html = f"""
-        <p><strong>Fix &amp; Join applies:</strong> A one-off fee of £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}
+        <p style="margin:0 0 10px;"><strong>Fix &amp; Join applies:</strong> A one-off fee of £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}
         applies and work remains subject to inspection and suitability.</p>
         """
 
     html = f"""
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
-      <h2 style="color:#ff6a00;">SJM Heating Service Plan Confirmed</h2>
-      <p>Your service plan signup and payment have been received.</p>
+    <div style="font-family:Arial,sans-serif;background:#0b0b0b;padding:30px;">
+      <div style="max-width:560px;margin:auto;background:#171717;border-radius:16px;padding:30px;color:#ffffff;border:1px solid #2a2a2a;">
 
-      <p><strong>Customer:</strong> {signup.get('full_name') or '-'}</p>
-      <p><strong>Plan:</strong> {signup.get('selected_plan') or '-'} - £{signup.get('monthly_price') or '-'} / month</p>
-      {fix_join_html}
+        <h2 style="color:#ff6a00;margin:0 0 12px;">You're covered</h2>
 
-      <p>Attached to this email you will find:</p>
-      <ul>
-        <li>Your signed service plan agreement</li>
-        <li>Our Terms and Conditions PDF</li>
-        <li>Our Privacy Policy PDF</li>
-        <li>Our Fair Usage Policy PDF</li>
-      </ul>
+        <p style="color:#c5c5c5;line-height:1.6;margin:0 0 20px;">
+          Thanks for choosing {COMPANY_NAME}. Your service plan is now live.
+        </p>
 
-      <p><strong>What happens next:</strong></p>
-      <ul>
-        <li>We review your application</li>
-        <li>We contact you if anything else is needed</li>
-        <li>Your cover proceeds in line with the agreed terms</li>
-      </ul>
+        <div style="background:#202020;padding:16px;border-radius:12px;margin:20px 0;line-height:1.8;">
+          <p style="margin:0 0 8px;"><strong>Name:</strong> {signup.get('full_name') or '-'}</p>
+          <p style="margin:0 0 8px;"><strong>Plan:</strong> {signup.get('selected_plan') or '-'}</p>
+          <p style="margin:0;"><strong>Monthly:</strong> £{signup.get('monthly_price') or '-'}</p>
+        </div>
 
-      <p>If you need anything, reply to this email or call {COMPANY_PHONE}.</p>
+        {fix_join_html}
+
+        <p style="margin:20px 0 10px;"><strong>What happens next:</strong></p>
+        <ul style="margin:0 0 20px 18px;line-height:1.8;color:#c5c5c5;">
+          <li>We review your signup</li>
+          <li>We’ll contact you if anything is needed</li>
+          <li>Your cover is now active</li>
+        </ul>
+
+        <p style="margin:20px 0 10px;"><strong>Attached to this email:</strong></p>
+        <ul style="margin:0 0 20px 18px;line-height:1.8;color:#c5c5c5;">
+          <li>Your signed service plan agreement</li>
+          <li>Our Terms and Conditions PDF</li>
+          <li>Our Privacy Policy PDF</li>
+          <li>Our Fair Usage Policy PDF</li>
+        </ul>
+
+        <p style="margin:20px 0 0;color:#c5c5c5;">
+          Need anything? Call us on <strong style="color:#ffffff;">{COMPANY_PHONE}</strong>
+        </p>
+
+      </div>
     </div>
     """
 
@@ -965,6 +978,16 @@ def index():
 def signup():
     return render_template("signup.html", plan_prices=PLAN_PRICES)
 
+@app.route("/admin/regenerate-pdfs", methods=["POST"])
+@login_required
+def regenerate_pdfs():
+    try:
+        regenerate_all_contract_pdfs()
+        flash("All contract PDFs regenerated successfully.", "success")
+    except Exception:
+        logger.exception("Failed regenerating PDFs.")
+        flash("Could not regenerate all PDFs.", "error")
+    return redirect(url_for("admin"))
 
 @app.route("/success")
 def success():
@@ -1430,7 +1453,14 @@ def regenerate_pdfs():
         flash("Could not regenerate all PDFs.", "error")
     return redirect(url_for("admin"))
 
-
+def regenerate_all_contract_pdfs():
+    rows = db_execute("SELECT id FROM signups ORDER BY id ASC", fetchall=True) or []
+    for row in rows:
+        signup = fetch_signup(row["id"])
+        if signup:
+            pdf_bytes = build_contract_pdf_bytes(signup)
+            save_contract_pdf_to_db(row["id"], pdf_bytes)
+            
 @app.route("/admin/export.csv")
 @login_required
 def export_csv():
