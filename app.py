@@ -105,13 +105,6 @@ TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
 FAIR_USAGE_PDF_FILENAME = "sjm_fair_usage_policy_v1.pdf"
 
-ACCENT = colors.HexColor("#ff6a00")
-DARK = colors.HexColor("#111111")
-MUTED = colors.HexColor("#5f5f5f")
-BORDER = colors.HexColor("#d8d8d8")
-SOFT_BG = colors.HexColor("#fafafa")
-PALE_ORANGE = colors.HexColor("#fff3eb")
-
 # -----------------------------------------------------------------------------
 # TEMPLATE GLOBALS
 # -----------------------------------------------------------------------------
@@ -203,6 +196,7 @@ def validate_required_env():
         "DB_HOST": DB_HOST,
         "DB_PORT": DB_PORT,
         "STRIPE_SECRET_KEY": os.environ.get("STRIPE_SECRET_KEY"),
+        "STRIPE_PRICE_ESSENTIAL": STRIPE_PRICES.get("Essential"),
         "STRIPE_PRICE_STANDARD": STRIPE_PRICES.get("Standard"),
         "STRIPE_PRICE_COMPLETE": STRIPE_PRICES.get("Complete"),
     }
@@ -432,6 +426,15 @@ def ensure_extra_columns():
         conn.close()
 
 
+def regenerate_all_contract_pdfs():
+    rows = db_execute("SELECT id FROM signups ORDER BY id ASC", fetchall=True) or []
+    for row in rows:
+        signup = fetch_signup(row["id"])
+        if signup:
+            pdf_bytes = build_contract_pdf_bytes(signup)
+            save_contract_pdf_to_db(row["id"], pdf_bytes)
+
+
 def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_fee=""):
     line_items = [
         {
@@ -483,81 +486,6 @@ def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_
 # PDF GENERATION
 # -----------------------------------------------------------------------------
 
-def draw_wrapped_text(pdf, text, x, y, max_width, line_height=14, font_name="Helvetica", font_size=10):
-    pdf.setFont(font_name, font_size)
-    words = (text or "").split()
-    if not words:
-        return y
-
-    line = ""
-    for word in words:
-        test_line = f"{line} {word}".strip()
-        if pdf.stringWidth(test_line, font_name, font_size) <= max_width:
-            line = test_line
-        else:
-            if line:
-                pdf.drawString(x, y, line)
-                y -= line_height
-            line = word
-
-    if line:
-        pdf.drawString(x, y, line)
-        y -= line_height
-
-    return y
-
-
-def draw_bullets(pdf, items, x, y, max_width, line_height=14, bullet_indent=12):
-    for item in items:
-        pdf.setFont("Helvetica", 10)
-        pdf.drawString(x, y, u"\u2022")
-        y = draw_wrapped_text(
-            pdf,
-            item,
-            x + bullet_indent,
-            y,
-            max_width - bullet_indent,
-            line_height=line_height,
-            font_name="Helvetica",
-            font_size=10,
-        )
-        y -= 2
-    return y
-
-
-def draw_section_box(pdf, x, y_top, width, title, body_lines=None, bullet_lines=None):
-    body_lines = body_lines or []
-    bullet_lines = bullet_lines or []
-
-    cursor_y = y_top - 14
-    content_height = 30 + (len(body_lines) * 16) + (len(bullet_lines) * 18)
-    if content_height < 58:
-        content_height = 58
-
-    box_bottom = y_top - content_height
-
-    pdf.setFillColor(SOFT_BG)
-    pdf.setStrokeColor(BORDER)
-    pdf.roundRect(x, box_bottom, width, content_height, 8, stroke=1, fill=1)
-
-    pdf.setFillColor(PALE_ORANGE)
-    pdf.roundRect(x, y_top - 28, width, 28, 8, stroke=0, fill=1)
-
-    pdf.setFillColor(DARK)
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(x + 12, y_top - 18, title)
-
-    cursor_y = y_top - 42
-    for line in body_lines:
-        cursor_y = draw_wrapped_text(pdf, line, x + 12, cursor_y, width - 24)
-        cursor_y -= 2
-
-    if bullet_lines:
-        cursor_y = draw_bullets(pdf, bullet_lines, x + 12, cursor_y, width - 24)
-
-    return box_bottom - 14
-
-
 def decode_signature_to_tempfile(signature_data):
     if not signature_data or "," not in signature_data:
         return None
@@ -584,9 +512,35 @@ def build_contract_pdf_bytes(signup):
     content_width = width - (margin * 2)
     y = height - 42
 
-    # Header bar
-    pdf.setFillColor(ACCENT)
-    pdf.rect(margin, y - 24, content_width, 24, fill=1, stroke=0)
+    accent_rgb = (1.0, 106 / 255, 0.0)
+
+    def box(title, lines, top_y, min_height=70):
+        line_height = 14
+        body_height = max(min_height, 36 + len(lines) * line_height)
+        bottom_y = top_y - body_height
+
+        pdf.setFillColorRGB(0.98, 0.98, 0.98)
+        pdf.setStrokeColorRGB(0.84, 0.84, 0.84)
+        pdf.roundRect(margin, bottom_y, content_width, body_height, 8, stroke=1, fill=1)
+
+        pdf.setFillColorRGB(1.0, 0.95, 0.92)
+        pdf.roundRect(margin, top_y - 28, content_width, 28, 8, stroke=0, fill=1)
+
+        pdf.setFillColorRGB(0.07, 0.07, 0.07)
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(margin + 12, top_y - 18, title)
+
+        current_y = top_y - 44
+        pdf.setFont("Helvetica", 10)
+        for line in lines:
+            pdf.drawString(margin + 12, current_y, line)
+            current_y -= line_height
+
+        return bottom_y - 14
+
+    # Top accent bar
+    pdf.setFillColorRGB(*accent_rgb)
+    pdf.rect(margin, y - 22, content_width, 22, fill=1, stroke=0)
 
     if os.path.exists(LOGO_PATH):
         try:
@@ -594,32 +548,33 @@ def build_contract_pdf_bytes(signup):
                 LOGO_PATH,
                 margin,
                 y - 72,
-                width=92,
-                height=46,
+                width=90,
+                height=45,
                 preserveAspectRatio=True,
                 mask="auto",
             )
         except Exception:
             logger.exception("Could not draw logo in PDF.")
 
-    pdf.setFillColor(colors.white)
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(margin + 10, y - 16, "SJM HEATING SERVICE PLAN")
+    pdf.setFillColorRGB(1, 1, 1)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(margin + 10, y - 14, "SJM HEATING SERVICE PLAN")
 
-    pdf.setFillColor(DARK)
+    pdf.setFillColorRGB(0.07, 0.07, 0.07)
     pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawRightString(width - margin, y - 42, "Service Plan Agreement")
-    pdf.setFont("Helvetica", 10)
-    pdf.setFillColor(MUTED)
-    pdf.drawRightString(width - margin, y - 58, f"Issued: {datetime.now(UTC).strftime('%d/%m/%Y')}")
+    pdf.drawRightString(width - margin, y - 40, "Service Plan Agreement")
+    pdf.setFont("Helvetica", 9)
+    pdf.setFillColorRGB(0.4, 0.4, 0.4)
+    pdf.drawRightString(width - margin, y - 56, f"Issued: {datetime.now(UTC).strftime('%d/%m/%Y')}")
+
     y -= 92
 
-    # Company / customer summary
-    pdf.setStrokeColor(BORDER)
-    pdf.setFillColor(SOFT_BG)
+    # Company / customer panel
+    pdf.setFillColorRGB(0.98, 0.98, 0.98)
+    pdf.setStrokeColorRGB(0.84, 0.84, 0.84)
     pdf.roundRect(margin, y - 88, content_width, 88, 10, stroke=1, fill=1)
 
-    pdf.setFillColor(DARK)
+    pdf.setFillColorRGB(0.07, 0.07, 0.07)
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawString(margin + 12, y - 18, COMPANY_NAME)
     pdf.setFont("Helvetica", 9)
@@ -634,21 +589,12 @@ def build_contract_pdf_bytes(signup):
     pdf.drawString(right_x, y - 34, f"Name: {signup.get('full_name') or '-'}")
     pdf.drawString(right_x, y - 48, f"Email: {signup.get('email') or '-'}")
     pdf.drawString(right_x, y - 62, f"Phone: {signup.get('phone') or '-'}")
+
     y -= 108
 
-    # Address
-    address = build_full_address(signup) or "-"
-    y = draw_section_box(
-        pdf,
-        margin,
-        y,
-        content_width,
-        "Property Address",
-        body_lines=[address],
-    )
+    y = box("Property Address", [build_full_address(signup) or "-"], y, min_height=58)
 
-    # Plan details
-    plan_body = [
+    plan_lines = [
         f"Selected Plan: {signup.get('selected_plan') or '-'}",
         f"Monthly Price: £{signup.get('monthly_price') or '-'}",
         f"Boiler Broken: {signup.get('boiler_broken') or '-'}",
@@ -656,58 +602,44 @@ def build_contract_pdf_bytes(signup):
         f"Warranty Valid: {signup.get('boiler_warranty_valid') or '-'}",
         f"Fix & Join: {signup.get('fix_and_join') or 'No'}",
     ]
-
     if signup.get("fix_and_join") == "Yes":
-        plan_body.append(f"Fix & Join Fee: £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}")
+        plan_lines.append(f"Fix & Join Fee: £{signup.get('fix_and_join_fee') or FIX_AND_JOIN_FEE}")
 
-    y = draw_section_box(
-        pdf,
-        margin,
-        y,
-        content_width,
-        "Plan Summary",
-        body_lines=plan_body,
-    )
+    y = box("Plan Summary", plan_lines, y, min_height=110)
 
-    # Terms summary
-    y = draw_section_box(
-        pdf,
-        margin,
-        y,
-        content_width,
-        "Key Cover Summary",
-        bullet_lines=[
+    y = box(
+        "Important Cover Notes",
+        [
             "This agreement confirms the customer's application for the selected SJM Heating service plan.",
-            "Cover is subject to the plan terms, privacy policy and fair usage policy in force at the time of sign-up.",
-            "All work remains subject to safe access, inspection, diagnosis, parts availability and system suitability.",
+            "Cover is subject to the plan terms, privacy policy and fair usage policy.",
+            "All work remains subject to access, inspection, diagnosis, parts availability and system suitability.",
             "Fix & Join work does not guarantee full repair within the initial charge.",
         ],
+        y,
+        min_height=104,
     )
 
-    # Legal acceptance
-    y = draw_section_box(
-        pdf,
-        margin,
-        y,
-        content_width,
+    y = box(
         "Legal Acceptance",
-        body_lines=[
+        [
             f"Terms Accepted: {'Yes' if signup.get('accepted_terms') else 'No'} ({TERMS_VERSION})",
             f"Privacy Accepted: {'Yes' if signup.get('accepted_privacy') else 'No'} ({PRIVACY_VERSION})",
             f"Fair Usage Accepted: {'Yes' if signup.get('accepted_fair_usage') else 'No'}",
         ],
+        y,
+        min_height=78,
     )
 
     # Signature block
-    sig_height = 108
-    pdf.setFillColor(colors.white)
-    pdf.setStrokeColor(BORDER)
+    sig_height = 106
+    pdf.setFillColorRGB(1, 1, 1)
+    pdf.setStrokeColorRGB(0.84, 0.84, 0.84)
     pdf.roundRect(margin, y - sig_height, content_width, sig_height, 10, stroke=1, fill=1)
 
-    pdf.setFillColor(PALE_ORANGE)
+    pdf.setFillColorRGB(1.0, 0.95, 0.92)
     pdf.roundRect(margin, y - 28, content_width, 28, 10, stroke=0, fill=1)
 
-    pdf.setFillColor(DARK)
+    pdf.setFillColorRGB(0.07, 0.07, 0.07)
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawString(margin + 12, y - 18, "Customer Signature")
 
@@ -721,9 +653,9 @@ def build_contract_pdf_bytes(signup):
             pdf.drawImage(
                 sig_path,
                 width - margin - 190,
-                y - 86,
+                y - 74,
                 width=160,
-                height=42,
+                height=40,
                 preserveAspectRatio=True,
                 mask="auto",
             )
@@ -735,13 +667,11 @@ def build_contract_pdf_bytes(signup):
             except Exception:
                 logger.exception("Could not delete temporary signature file.")
 
-    y -= (sig_height + 22)
-
     # Footer
-    pdf.setStrokeColor(BORDER)
+    pdf.setStrokeColorRGB(0.84, 0.84, 0.84)
     pdf.line(margin, 26, width - margin, 26)
     pdf.setFont("Helvetica", 8.5)
-    pdf.setFillColor(MUTED)
+    pdf.setFillColorRGB(0.4, 0.4, 0.4)
     pdf.drawString(margin, 12, f"{COMPANY_NAME}  |  {COMPANY_PHONE}  |  {COMPANY_EMAIL}")
     pdf.drawRightString(width - margin, 12, "Service Plan Agreement")
 
@@ -809,7 +739,7 @@ def send_customer_confirmation_email(signup, pdf_bytes):
 
     html = f"""
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
-      <h2>Thank you for choosing {COMPANY_NAME}</h2>
+      <h2 style="color:#ff6a00;">SJM Heating Service Plan Confirmed</h2>
       <p>Your service plan signup and payment have been received.</p>
 
       <p><strong>Customer:</strong> {signup.get('full_name') or '-'}</p>
@@ -1153,7 +1083,7 @@ def submit():
 
     if broken == "No":
         if under3 not in ["Yes", "No"] or warranty not in ["Yes", "No"]:
-            flash("Please answer the boiler age and warranty questions.", "error")
+            flash("Please answer the age and warranty questions.", "error")
             return redirect(url_for("signup"))
     else:
         under3 = ""
@@ -1162,8 +1092,10 @@ def submit():
     eligible_plans, _ = get_eligible_plans(broken, under3, warranty)
 
     if plan not in eligible_plans:
-        flash("The selected plan is not valid for the answers given.", "error")
-        return redirect(url_for("signup"))
+        if "Standard" in eligible_plans:
+            plan = "Standard"
+        else:
+            plan = eligible_plans[0]
 
     if not signature_name:
         flash("Please enter your typed signature name.", "error")
@@ -1484,6 +1416,18 @@ def run_reminders():
             logger.exception("Failed sending reminder for signup %s", row.get("id"))
 
     flash(f"Reminder run complete. Emails sent: {sent_count}", "success")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/regenerate-pdfs", methods=["POST"])
+@login_required
+def regenerate_pdfs():
+    try:
+        regenerate_all_contract_pdfs()
+        flash("All contract PDFs regenerated successfully.", "success")
+    except Exception:
+        logger.exception("Failed regenerating PDFs.")
+        flash("Could not regenerate all PDFs.", "error")
     return redirect(url_for("admin"))
 
 
