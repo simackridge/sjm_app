@@ -506,7 +506,7 @@ textarea:focus{
   touch-action:none;
   cursor:crosshair;
 }
-}
+
 
 .checkboxes{
   display:flex;
