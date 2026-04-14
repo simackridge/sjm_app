@@ -5,139 +5,158 @@
 {% block content %}
 <section class="page-header">
   <h1>Join an SJM Service Plan</h1>
-  <p>Follow the steps below to get covered.</p>
+  <p>Complete the steps below to set up your cover.</p>
 </section>
 
-<div class="card form-card">
+<div class="card form-card signup-card">
   <form method="POST" action="{{ url_for('submit') }}" id="signupForm">
     <input type="text" name="contact_reference" style="display:none">
 
-    <!-- STEP 1 -->
     <div class="step active" id="step1">
+      <div class="step-badge">Step 1 of 5</div>
       <h2>Your Details</h2>
+      <p class="step-intro">Tell us who the plan is for.</p>
 
-      <input id="full_name" name="full_name" placeholder="Full Name *" required>
-      <input id="email" name="email" type="email" placeholder="Email *" required>
-      <input id="phone" name="phone" placeholder="Phone">
+      <div class="field-group">
+        <input id="full_name" name="full_name" placeholder="Full Name *" required>
+        <input id="email" name="email" type="email" placeholder="Email *" required>
+        <input id="phone" name="phone" placeholder="Phone">
+      </div>
 
-      <button type="button" class="btn btn-primary" onclick="goToAddressStep()">Next</button>
+      <div class="step-actions">
+        <button type="button" class="btn btn-primary" onclick="goToAddressStep()">Next</button>
+      </div>
     </div>
 
-    <!-- STEP 2 ADDRESS -->
     <div class="step" id="step2">
+      <div class="step-badge">Step 2 of 5</div>
       <h2>Your Address</h2>
+      <p class="step-intro">Use the postcode lookup or enter the address manually.</p>
 
       <div class="field">
         <label for="postcode">Postcode *</label>
-        <div style="display:flex; gap:10px;">
+        <div class="inline-row">
           <input id="postcode" name="postcode" placeholder="Postcode *" required>
-          <button type="button" class="btn btn-secondary" id="lookupBtn" onclick="lookupPostcode()">Lookup</button>
+          <button type="button" class="btn btn-secondary lookup-btn" id="lookupBtn" onclick="lookupPostcode()">Lookup</button>
         </div>
       </div>
 
       <div id="lookupMessage" class="note-box" style="display:none; margin-top:12px;"></div>
 
-      <div class="field" style="margin-top:14px;">
-        <label for="address1">Address Line 1 *</label>
-        <input id="address1" name="address_line_1" placeholder="House number and street *" required>
+      <div class="field-group address-group">
+        <div class="field">
+          <label for="address1">Address Line 1 *</label>
+          <input id="address1" name="address_line_1" placeholder="House number and street *" required>
+        </div>
+
+        <div class="field">
+          <label for="address2">Address Line 2</label>
+          <input id="address2" name="address_line_2" placeholder="Address Line 2">
+        </div>
+
+        <div class="field">
+          <label for="city">Town / City *</label>
+          <input id="city" name="city" placeholder="Town / City *" required>
+        </div>
       </div>
 
-      <div class="field" style="margin-top:14px;">
-        <label for="address2">Address Line 2</label>
-        <input id="address2" name="address_line_2" placeholder="Address Line 2">
-      </div>
-
-      <div class="field" style="margin-top:14px;">
-        <label for="city">Town / City *</label>
-        <input id="city" name="city" placeholder="Town / City *" required>
-      </div>
-
-      <div style="margin-top:18px; display:flex; gap:10px;">
+      <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(1)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToBoilerStep()">Next</button>
       </div>
     </div>
 
-    <!-- STEP 3 BOILER -->
     <div class="step" id="step3">
+      <div class="step-badge">Step 3 of 5</div>
       <h2>Your Boiler</h2>
+      <p class="step-intro">We use this to work out the right plan options.</p>
 
-      <select id="broken" name="boiler_broken" onchange="updateFlow()" required>
-        <option value="">Is your boiler broken? *</option>
-        <option value="No">No</option>
-        <option value="Yes">Yes</option>
-      </select>
+      <div class="field-group">
+        <select id="broken" name="boiler_broken" onchange="updateFlow()" required>
+          <option value="">Is your boiler broken? *</option>
+          <option value="No">No</option>
+          <option value="Yes">Yes</option>
+        </select>
+      </div>
 
-      <div id="extraQuestions" style="margin-top:16px;">
+      <div id="extraQuestions" class="question-grid">
         <select id="under3" name="boiler_under_3_years">
           <option value="">Under 3 years old? *</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
 
-        <select id="warranty" name="boiler_warranty_valid" style="margin-top:12px;">
+        <select id="warranty" name="boiler_warranty_valid">
           <option value="">Still under warranty? *</option>
           <option value="Yes">Yes</option>
           <option value="No">No</option>
         </select>
       </div>
 
-      <div style="margin-top:18px; display:flex; gap:10px;">
+      <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToPlanStep()">Next</button>
       </div>
     </div>
 
-    <!-- STEP 4 PLAN -->
     <div class="step" id="step4">
+      <div class="step-badge">Step 4 of 5</div>
       <h2>Select Plan</h2>
+      <p class="step-intro">Choose the plan that best fits your boiler and cover needs.</p>
 
-      <select id="plan" name="selected_plan" required>
-        <option value="">Choose a plan *</option>
-      </select>
-
-      <div id="fixJoinBox" class="note-box" style="display:none; margin-top:14px;">
-        ⚠️ Your boiler is broken — Fix & Join fee of £{{ fix_and_join_fee }} applies.
+      <div class="field-group">
+        <select id="plan" name="selected_plan" required>
+          <option value="">Choose a plan *</option>
+        </select>
       </div>
 
-      <div style="margin-top:18px; display:flex; gap:10px;">
+      <div id="fixJoinBox" class="note-box warning-box" style="display:none; margin-top:14px;">
+        Your boiler is broken, so a one-off Fix &amp; Join fee of £{{ fix_and_join_fee }} will apply.
+      </div>
+
+      <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(3)">Back</button>
         <button type="button" class="btn btn-primary" onclick="goToAgreementStep()">Next</button>
       </div>
     </div>
 
-    <!-- STEP 5 SIGNATURE -->
     <div class="step" id="step5">
-      <h2>Agreement</h2>
+      <div class="step-badge">Step 5 of 5</div>
+      <h2>Agreement & Signature</h2>
+      <p class="step-intro">Please confirm your details and sign below.</p>
 
-      <input id="signature_name" name="signature_name" placeholder="Type your full name *" required>
-
-      <p style="margin-top:16px;">Draw your signature:</p>
-     <canvas id="signaturePad" width="420" height="180"></canvas>
-      <input type="hidden" name="signature_data" id="signatureData">
-
-      <div style="margin-top:10px;">
-        <button type="button" class="btn btn-secondary" onclick="clearSignature()">Clear Signature</button>
+      <div class="field-group">
+        <input id="signature_name" name="signature_name" placeholder="Type your full name *" required>
       </div>
 
-      <div class="checkboxes" style="margin-top:18px;">
+      <div class="signature-wrap">
+        <div class="signature-header">
+          <strong>Draw your signature</strong>
+          <button type="button" class="btn btn-secondary btn-small" onclick="clearSignature()">Clear</button>
+        </div>
+
+        <canvas id="signaturePad"></canvas>
+        <input type="hidden" name="signature_data" id="signatureData">
+      </div>
+
+      <div class="checkboxes">
         <label>
           <input type="checkbox" name="accepted_terms" required>
-          I accept the <a href="{{ url_for('terms') }}" target="_blank">Terms</a>
+          I accept the <a href="{{ url_for('terms') }}" target="_blank" rel="noopener noreferrer">Terms</a>
         </label>
 
         <label>
           <input type="checkbox" name="accepted_privacy" required>
-          I accept the <a href="{{ url_for('privacy') }}" target="_blank">Privacy Policy</a>
+          I accept the <a href="{{ url_for('privacy') }}" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
         </label>
 
         <label>
           <input type="checkbox" name="accepted_fair_usage" required>
-          I accept the Fair Usage Policy
+          I accept the <a href="{{ url_for('fair_usage') }}" target="_blank" rel="noopener noreferrer">Fair Usage Policy</a>
         </label>
       </div>
 
-      <div style="margin-top:18px; display:flex; gap:10px;">
+      <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(4)">Back</button>
         <button type="submit" class="btn btn-primary">Continue to Payment</button>
       </div>
@@ -145,24 +164,11 @@
   </form>
 </div>
 
-<style>
-.step { display:none; }
-.step.active { display:block; }
-
-#signaturePad {
-  border: 2px solid #ddd;
-  background: #ffffff;
-  border-radius: 6px;
-  touch-action: none;
-  display: block;
-  max-width: 100%;
-}
-</style>
-
 <script>
 function nextStep(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step' + step).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function goToAddressStep() {
@@ -241,7 +247,7 @@ function updateFlow() {
     return;
   }
 
-  extraQuestions.style.display = 'block';
+  extraQuestions.style.display = 'grid';
   fixBox.style.display = 'none';
 
   if (broken === 'No') {
@@ -305,17 +311,27 @@ function lookupPostcode() {
     });
 }
 
-// SIGNATURE PAD
+// Signature canvas
 const canvas = document.getElementById('signaturePad');
 const ctx = canvas.getContext('2d');
 let drawing = false;
 
-function prepareCanvas() {
+function resizeCanvas() {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const rect = canvas.getBoundingClientRect();
+
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#000000';
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  ctx.strokeStyle = '#111111';
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  document.getElementById('signatureData').value = '';
 }
 
 function getCoords(e) {
@@ -346,8 +362,7 @@ function stopDraw() {
 }
 
 function clearSignature() {
-  prepareCanvas();
-  document.getElementById('signatureData').value = '';
+  resizeCanvas();
 }
 
 canvas.addEventListener('mousedown', startDraw);
@@ -370,7 +385,9 @@ canvas.addEventListener('touchend', (e) => {
   stopDraw();
 }, { passive: false });
 
-prepareCanvas();
+window.addEventListener('resize', resizeCanvas);
+
 updateFlow();
+setTimeout(resizeCanvas, 50);
 </script>
 {% endblock %}

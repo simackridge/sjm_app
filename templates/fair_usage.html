@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Fair Usage Policy{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h1>Fair Usage Policy</h1>
+  <p>Please read this policy alongside your service plan terms and conditions.</p>
+</section>
+
+<div class="card" style="max-width:900px; line-height:1.8;">
+  <h2>1. Purpose of this policy</h2>
+  <p>
+    This Fair Usage Policy is designed to keep our service plans practical, sustainable and fair for all customers.
+    It explains the type of usage considered reasonable under your cover.
+  </p>
+
+  <h2>2. General principle</h2>
+  <p>
+    Your service plan is intended for normal domestic residential use and routine support relating to the covered heating system.
+    It is not intended to cover excessive, repeated or avoidable callouts caused by misuse, neglect, vandalism, poor system conditions,
+    or failure to follow previous advice or repair recommendations.
+  </p>
+
+  <h2>3. Reasonable use includes</h2>
+  <ul>
+    <li>Routine annual servicing included within your selected plan</li>
+    <li>Normal domestic breakdown attendance where covered under the plan</li>
+    <li>Reasonable contact regarding system performance, faults or service scheduling</li>
+  </ul>
+
+  <h2>4. Examples of unfair or excessive use</h2>
+  <ul>
+    <li>Repeated callouts for the same issue where recommended remedial works have been declined</li>
+    <li>Problems caused by sludge, scale, poor water quality, frozen condensate, low system pressure not due to covered faults, or lack of maintenance outside the scope of the plan</li>
+    <li>Damage caused by misuse, accidental damage, third parties, builders, decorators, or unauthorised repairs</li>
+    <li>Commercial, business, or non-domestic use of equipment covered by a domestic plan</li>
+    <li>Access issues, unsafe working conditions, or appointments missed repeatedly without notice</li>
+  </ul>
+
+  <h2>5. System condition</h2>
+  <p>
+    Cover is based on the system being in a reasonable and serviceable condition at the point cover begins.
+    Where major pre-existing faults, unsafe conditions, installation defects, or non-compliant work are discovered,
+    we may recommend further repair, correction, or system improvements before full ongoing cover can continue.
+  </p>
+
+  <h2>6. Parts, repairs and limitations</h2>
+  <p>
+    Any work carried out remains subject to inspection, diagnosis, access, parts availability and economic viability.
+    Where a system or component is obsolete, unsafe, beyond practical repair, or repeatedly unreliable,
+    we may recommend replacement instead of continued repair.
+  </p>
+
+  <h2>7. Missed appointments and access</h2>
+  <p>
+    Customers must provide safe and reasonable access to the property and heating appliance.
+    Repeated missed appointments or inability to gain access may result in delays, extra charges, or suspension of service benefits.
+  </p>
+
+  <h2>8. Review of usage</h2>
+  <p>
+    If we believe usage under a plan has become excessive or falls outside reasonable domestic cover expectations,
+    we reserve the right to review the account, discuss the issue with the customer, and apply reasonable restrictions,
+    recommendations or changes in line with the service plan terms.
+  </p>
+
+  <h2>9. Contact</h2>
+  <p>
+    If you have any questions about this Fair Usage Policy, please contact {{ company_name }} on {{ company_phone }}
+    or email {{ company_email }}.
+  </p>
+</div>
+{% endblock %}
