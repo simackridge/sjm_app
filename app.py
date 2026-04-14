@@ -978,17 +978,6 @@ def index():
 def signup():
     return render_template("signup.html", plan_prices=PLAN_PRICES)
 
-@app.route("/admin/regenerate-pdfs", methods=["POST"])
-@login_required
-def regenerate_pdfs():
-    try:
-        regenerate_all_contract_pdfs()
-        flash("All contract PDFs regenerated successfully.", "success")
-    except Exception:
-        logger.exception("Failed regenerating PDFs.")
-        flash("Could not regenerate all PDFs.", "error")
-    return redirect(url_for("admin"))
-
 @app.route("/success")
 def success():
     signup_id = request.args.get("signup_id")
@@ -1460,7 +1449,7 @@ def regenerate_all_contract_pdfs():
         if signup:
             pdf_bytes = build_contract_pdf_bytes(signup)
             save_contract_pdf_to_db(row["id"], pdf_bytes)
-            
+
 @app.route("/admin/export.csv")
 @login_required
 def export_csv():
