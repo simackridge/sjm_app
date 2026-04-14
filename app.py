@@ -102,8 +102,6 @@ PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
 TERMS_PDF_FILENAME = "sjm_service_plan_terms_v1.pdf"
 PRIVACY_PDF_FILENAME = "sjm_privacy_policy_v1.pdf"
-
-# Optional if you later add it
 FAIR_USAGE_PDF_FILENAME = os.environ.get("FAIR_USAGE_PDF_FILENAME", "")
 
 # -----------------------------------------------------------------------------
@@ -434,6 +432,21 @@ def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_
         }
     ]
 
+    if fix_join == "Yes" and fix_and_join_fee:
+        line_items.append(
+            {
+                "price_data": {
+                    "currency": "gbp",
+                    "product_data": {
+                        "name": "Fix & Join fee",
+                        "description": "One-off Fix & Join charge",
+                    },
+                    "unit_amount": money_to_pence(fix_and_join_fee),
+                },
+                "quantity": 1,
+            }
+        )
+
     session_kwargs = {
         "payment_method_types": ["card"],
         "mode": "subscription",
@@ -447,29 +460,14 @@ def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_
             "fix_and_join_fee": fix_and_join_fee,
             "selected_plan": plan,
         },
-    }
-
-    if fix_join == "Yes" and fix_and_join_fee:
-        session_kwargs["subscription_data"] = {
+        "subscription_data": {
             "metadata": {
                 "signup_id": str(signup_id),
                 "fix_and_join": fix_join,
                 "selected_plan": plan,
-            },
-            "add_invoice_items": [
-                {
-                    "price_data": {
-                        "currency": "gbp",
-                        "product_data": {
-                            "name": "Fix & Join fee",
-                            "description": "One-off Fix & Join charge",
-                        },
-                        "unit_amount": money_to_pence(fix_and_join_fee),
-                    },
-                    "quantity": 1,
-                }
-            ],
-        }
+            }
+        },
+    }
 
     return stripe.checkout.Session.create(**session_kwargs)
 
