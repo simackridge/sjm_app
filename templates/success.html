@@ -8,24 +8,39 @@
     <div class="success-icon">✓</div>
 
     <h1>You're all set</h1>
-    <p class="success-sub">
-      Your service plan is now active. Everything has been set up successfully.
-    </p>
+    {% if signup and signup.fix_and_join == "Yes" %}
+      <p class="success-sub">
+        Your Fix &amp; Join payment has been received. We’ll be in touch about the inspection and diagnosis visit before ongoing cover starts.
+      </p>
+    {% else %}
+      <p class="success-sub">
+        Your service plan is now active. Everything has been set up successfully.
+      </p>
+    {% endif %}
 
     {% if signup %}
     <div class="success-summary">
       <div><strong>Name:</strong> {{ signup.full_name }}</div>
       <div><strong>Plan:</strong> {{ signup.selected_plan }}</div>
       <div><strong>Monthly:</strong> £{{ signup.monthly_price }}</div>
+      {% if signup.fix_and_join == "Yes" %}
+        <div><strong>Fix &amp; Join fee:</strong> £{{ signup.fix_and_join_fee or fix_and_join_fee }}</div>
+      {% endif %}
     </div>
     {% endif %}
 
     <div class="success-next">
       <h3>What happens next?</h3>
       <ul>
-        <li>We’ll review your signup</li>
-        <li>We’ll contact you if anything is needed</li>
-        <li>Your cover is now live</li>
+        {% if signup and signup.fix_and_join == "Yes" %}
+          <li>We’ll review your Fix &amp; Join request</li>
+          <li>We’ll contact you to confirm the inspection and diagnosis visit</li>
+          <li>Your chosen plan follows the initial Fix &amp; Join stage</li>
+        {% else %}
+          <li>We’ll review your signup</li>
+          <li>We’ll contact you if anything is needed</li>
+          <li>Your cover is now live</li>
+        {% endif %}
       </ul>
     </div>
 

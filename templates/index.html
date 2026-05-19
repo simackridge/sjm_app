@@ -6,61 +6,79 @@
 <section class="hero">
   <h1>Boiler Cover Made Simple</h1>
   <p>
-    Reliable heating cover from engineers you can trust. 
-    Fast response, honest pricing, and no nonsense.
+    Reliable heating cover from engineers you can trust. Fast response, honest pricing, and no nonsense.
   </p>
 
-  <a href="{{ url_for('signup') }}" class="btn btn-primary btn-large">
-    Get Covered Now
-  </a>
+  <div class="hero-actions">
+    <a href="{{ url_for('signup') }}" class="btn btn-primary btn-large">
+      Get Covered Now
+    </a>
+    <a href="{{ url_for('book_annual_service') }}" class="btn btn-secondary btn-large">
+      Book your annual service online
+    </a>
+  </div>
 </section>
 
 <section class="plans">
   <h2>Our Plans</h2>
+  <p class="section-copy">
+    Choose the cover that suits your boiler. If your boiler is newer or still under manufacturer warranty, you can still choose a higher level of cover if you’d prefer extra peace of mind.
+  </p>
 
   <div class="plan-grid">
-
     <div class="plan-card">
-      <h3>Essential</h3>
+      <h3>Essential Plan</h3>
       <p class="price">£11/month</p>
       <ul>
-        <li>Annual service</li>
-        <li>Basic protection</li>
-        <li>For newer boilers only</li>
+        <li>Annual boiler service included</li>
+        <li>Good fit for newer boilers</li>
+        <li>Lower-cost monthly cover</li>
       </ul>
+      <a href="{{ url_for('signup') }}" class="btn btn-secondary btn-wide">Choose Essential</a>
     </div>
 
     <div class="plan-card featured">
-      <h3>Standard</h3>
+      <h3>Standard Plan</h3>
       <p class="price">£17.99/month</p>
       <ul>
-        <li>Service included</li>
-        <li>Breakdown cover</li>
-        <li>Most popular choice</li>
+        <li>Annual service included</li>
+        <li>Boiler cover</li>
+        <li>Our most popular boiler-only option</li>
       </ul>
+      <a href="{{ url_for('signup') }}" class="btn btn-primary btn-wide">Choose Standard</a>
     </div>
 
     <div class="plan-card">
-      <h3>Complete</h3>
+      <h3>Complete Plan</h3>
       <p class="price">£23.99/month</p>
       <ul>
-        <li>Full system cover</li>
-        <li>Priority response</li>
-        <li>Total peace of mind</li>
+        <li>Annual service included</li>
+        <li>Cover for your full heating system</li>
+        <li>Designed for broader protection beyond the boiler</li>
+        <li>Extra peace of mind</li>
       </ul>
+      <a href="{{ url_for('signup') }}" class="btn btn-secondary btn-wide">Choose Complete</a>
     </div>
 
+    <div class="plan-card utility-card">
+      <h3>One-Off Annual Boiler Service</h3>
+      <p class="price">£{{ one_off_service_price }} one-off payment</p>
+      <p class="plan-card-copy">
+        Just need your yearly boiler service without joining a monthly plan? Book your annual service online and we’ll contact you to confirm the appointment.
+      </p>
+      <a href="{{ url_for('book_annual_service') }}" class="btn btn-secondary btn-wide">Book annual service</a>
+    </div>
   </div>
 </section>
 
 <section class="cta">
   <h2>Boiler broken?</h2>
   <p>
-    No problem — join with our Fix & Join option and we’ll get you back up and running.
+    Use our existing Fix &amp; Join route and we’ll start with inspection and diagnosis before getting your cover in place.
   </p>
 
-  <a href="{{ url_for('signup') }}" class="btn btn-secondary">
-    Start Now
+  <a href="{{ url_for('fix_and_join') }}" class="btn btn-primary">
+    Start Fix &amp; Join
   </a>
 </section>
 {% endblock %}

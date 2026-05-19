@@ -10,6 +10,7 @@ from flask import (
     Response,
 )
 from datetime import datetime, UTC, timedelta
+from decimal import Decimal
 import os
 import csv
 import io
@@ -75,6 +76,7 @@ resend.api_key = os.environ.get("RESEND_API_KEY")
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_ONE_OFF_SERVICE = os.environ.get("STRIPE_PRICE_ONE_OFF_SERVICE")
 
 STRIPE_PRICES = {
     "Essential": os.environ.get("STRIPE_PRICE_ESSENTIAL"),
@@ -98,6 +100,11 @@ PLAN_PRICES = {
 }
 
 FIX_AND_JOIN_FEE = "240.99"
+ONE_OFF_SERVICE_PRICE = "96.00"
+ONE_OFF_SERVICE_BOOKING_TYPE = "one_off_annual_service"
+ONE_OFF_BOOKING_STATUSES = ["New", "Contacted", "Booked", "Completed", "Cancelled"]
+ONE_OFF_APPOINTMENT_STATUSES = ["To arrange", "Date offered", "Confirmed", "Completed"]
+DEFAULT_ASSIGNED_ENGINEER = "Sean"
 TERMS_VERSION = os.environ.get("TERMS_VERSION", "v1.0")
 PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
@@ -119,8 +126,10 @@ def inject_company_details():
         "company_website": COMPANY_WEBSITE,
         "favicon_path": FAVICON_PATH,
         "fix_and_join_fee": FIX_AND_JOIN_FEE,
+        "one_off_service_price": ONE_OFF_SERVICE_PRICE,
         "terms_version": TERMS_VERSION,
         "privacy_version": PRIVACY_VERSION,
+        "build_full_address": build_full_address,
     }
 
 # -----------------------------------------------------------------------------
@@ -187,7 +196,7 @@ def safe_cancel_url():
     return STRIPE_CANCEL_URL or url_for("stripe_cancel", _external=True)
 
 
-def validate_required_env():
+def validate_required_env(include_monthly_prices=True, include_one_off_price=False):
     missing = []
     required = {
         "DB_NAME": DB_NAME,
@@ -196,10 +205,20 @@ def validate_required_env():
         "DB_HOST": DB_HOST,
         "DB_PORT": DB_PORT,
         "STRIPE_SECRET_KEY": os.environ.get("STRIPE_SECRET_KEY"),
-        "STRIPE_PRICE_ESSENTIAL": STRIPE_PRICES.get("Essential"),
-        "STRIPE_PRICE_STANDARD": STRIPE_PRICES.get("Standard"),
-        "STRIPE_PRICE_COMPLETE": STRIPE_PRICES.get("Complete"),
     }
+
+    if include_monthly_prices:
+        required.update(
+            {
+                "STRIPE_PRICE_ESSENTIAL": STRIPE_PRICES.get("Essential"),
+                "STRIPE_PRICE_STANDARD": STRIPE_PRICES.get("Standard"),
+                "STRIPE_PRICE_COMPLETE": STRIPE_PRICES.get("Complete"),
+            }
+        )
+
+    if include_one_off_price:
+        required["STRIPE_PRICE_ONE_OFF_SERVICE"] = STRIPE_PRICE_ONE_OFF_SERVICE
+
     for key, value in required.items():
         if not value:
             missing.append(key)
@@ -210,12 +229,89 @@ def docs_file_exists(filename):
     return bool(filename) and os.path.exists(os.path.join(DOCS_DIR, filename))
 
 
+def value_or_first(row, *keys):
+    if not row:
+        return ""
+
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def boolish_to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value in (1, "1", "true", "True", "TRUE", "yes", "Yes", "YES", "on"):
+        return True
+    if value in (0, "0", "false", "False", "FALSE", "no", "No", "NO", "off"):
+        return False
+    return False
+
+
+def build_full_name(row):
+    full_name = clean(value_or_first(row, "full_name"))
+    if full_name:
+        return full_name
+
+    first_name = clean(value_or_first(row, "first_name"))
+    last_name = clean(value_or_first(row, "last_name"))
+    return " ".join(part for part in [first_name, last_name] if part)
+
+
+def normalize_signup_record(signup):
+    if not signup:
+        return signup
+
+    row = dict(signup)
+    row["address_line_1"] = value_or_first(row, "address_line_1", "address_line1")
+    row["address_line_2"] = value_or_first(row, "address_line_2", "address_line2")
+    row["city"] = value_or_first(row, "city", "town")
+    row["full_name"] = build_full_name(row)
+    row["signature_name"] = value_or_first(row, "signature_name") or row["full_name"]
+    row["signature_data"] = value_or_first(row, "signature_data", "signature")
+    row["accepted_terms"] = boolish_to_bool(value_or_first(row, "accepted_terms", "terms_accepted"))
+    row["accepted_privacy"] = boolish_to_bool(value_or_first(row, "accepted_privacy", "privacy_accepted"))
+    row["accepted_fair_usage"] = boolish_to_bool(value_or_first(row, "accepted_fair_usage"))
+    row["last_payment_link_sent_at"] = value_or_first(
+        row, "last_payment_link_sent_at", "stripe_payment_link_sent_at"
+    )
+    row["boiler_under_3_years"] = value_or_first(row, "boiler_under_3_years")
+    row["boiler_warranty_valid"] = value_or_first(row, "boiler_warranty_valid")
+    row["contract_pdf_filename"] = value_or_first(row, "contract_pdf_filename")
+    return row
+
+
+def normalize_signup_rows(rows):
+    return [normalize_signup_record(row) for row in rows or []]
+
+
+def normalize_one_off_booking(booking):
+    if not booking:
+        return booking
+
+    row = dict(booking)
+    row["full_name"] = build_full_name(row)
+    row["booking_type"] = value_or_first(row, "booking_type") or ONE_OFF_SERVICE_BOOKING_TYPE
+    row["payment_status"] = value_or_first(row, "payment_status") or "Pending"
+    row["status"] = value_or_first(row, "status") or "New"
+    row["appointment_status"] = value_or_first(row, "appointment_status") or "To arrange"
+    row["assigned_engineer"] = value_or_first(row, "assigned_engineer") or DEFAULT_ASSIGNED_ENGINEER
+    return row
+
+
+def normalize_one_off_rows(rows):
+    return [normalize_one_off_booking(row) for row in rows or []]
+
+
 def build_full_address(row):
     parts = [
-        row.get("address_line_1"),
-        row.get("address_line_2"),
-        row.get("city"),
-        row.get("postcode"),
+        value_or_first(row, "address_line_1", "address_line1"),
+        value_or_first(row, "address_line_2", "address_line2"),
+        value_or_first(row, "city", "town"),
+        value_or_first(row, "county"),
+        value_or_first(row, "postcode"),
     ]
     return ", ".join([p for p in parts if p])
 
@@ -255,12 +351,40 @@ def money_to_pence(value):
     return pounds * 100 + pence
 
 
+def pence_to_money(amount):
+    if amount in (None, ""):
+        return ""
+
+    return format((Decimal(str(amount)) / Decimal("100")), ".2f")
+
+
+def get_checkout_value(checkout, key, default=None):
+    if isinstance(checkout, dict):
+        return checkout.get(key, default)
+    return getattr(checkout, key, default)
+
+
+def get_checkout_metadata(checkout):
+    metadata = get_checkout_value(checkout, "metadata", {}) or {}
+    return dict(metadata)
+
+
 def fetch_signup(signup_id):
-    return db_execute(
+    row = db_execute(
         "SELECT * FROM signups WHERE id=%s",
         (signup_id,),
         fetchone=True,
     )
+    return normalize_signup_record(row)
+
+
+def fetch_one_off_booking(booking_id):
+    row = db_execute(
+        "SELECT * FROM one_off_service_bookings WHERE id=%s",
+        (booking_id,),
+        fetchone=True,
+    )
+    return normalize_one_off_booking(row)
 
 
 def update_signup_email_status(signup_id, customer_sent=None, admin_sent=None):
@@ -317,10 +441,11 @@ def mark_payment_link_generated(signup_id, checkout_url, checkout_session_id):
             stripe_checkout_session_id=%s,
             payment_status='Link sent',
             last_payment_link_sent_at=%s,
+            stripe_payment_link_sent_at=%s,
             updated_at=%s
         WHERE id=%s
         """,
-        (checkout_url, checkout_session_id, now, now, signup_id),
+        (checkout_url, checkout_session_id, now, now, now, signup_id),
         commit=True,
     )
 
@@ -332,8 +457,8 @@ def mark_signup_paid(signup_id, checkout=None):
     stripe_subscription_id = None
 
     if checkout:
-        stripe_customer_id = getattr(checkout, "customer", None)
-        stripe_subscription_id = getattr(checkout, "subscription", None)
+        stripe_customer_id = get_checkout_value(checkout, "customer")
+        stripe_subscription_id = get_checkout_value(checkout, "subscription")
 
     db_execute(
         """
@@ -346,6 +471,92 @@ def mark_signup_paid(signup_id, checkout=None):
         WHERE id=%s
         """,
         (now, stripe_customer_id, stripe_subscription_id, now, signup_id),
+        commit=True,
+    )
+
+
+def update_one_off_booking_email_status(booking_id, customer_sent=None, admin_sent=None):
+    updates = []
+    values = []
+
+    if customer_sent is not None:
+        updates.append("customer_email_sent=%s")
+        values.append(customer_sent)
+
+    if admin_sent is not None:
+        updates.append("admin_email_sent=%s")
+        values.append(admin_sent)
+
+    if not updates:
+        return
+
+    updates.append("updated_at=%s")
+    values.append(datetime.now(UTC))
+    values.append(booking_id)
+
+    db_execute(
+        f"""
+        UPDATE one_off_service_bookings
+        SET {", ".join(updates)}
+        WHERE id=%s
+        """,
+        tuple(values),
+        commit=True,
+    )
+
+
+def mark_one_off_checkout_created(booking_id, checkout_session):
+    db_execute(
+        """
+        UPDATE one_off_service_bookings
+        SET stripe_session_id=%s,
+            payment_status='Checkout created',
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (checkout_session.id, datetime.now(UTC), booking_id),
+        commit=True,
+    )
+
+
+def mark_one_off_booking_cancelled(booking_id):
+    db_execute(
+        """
+        UPDATE one_off_service_bookings
+        SET payment_status=CASE
+                WHEN payment_status='Paid' THEN payment_status
+                ELSE 'Cancelled'
+            END,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (datetime.now(UTC), booking_id),
+        commit=True,
+    )
+
+
+def mark_one_off_booking_paid(booking_id, checkout):
+    now = datetime.now(UTC)
+    stripe_payment_intent_id = get_checkout_value(checkout, "payment_intent")
+    amount_paid = pence_to_money(get_checkout_value(checkout, "amount_total"))
+
+    db_execute(
+        """
+        UPDATE one_off_service_bookings
+        SET payment_status='Paid',
+            stripe_session_id=COALESCE(%s, stripe_session_id),
+            stripe_payment_intent_id=COALESCE(%s, stripe_payment_intent_id),
+            amount_paid=COALESCE(%s, amount_paid),
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (
+            get_checkout_value(checkout, "id"),
+            stripe_payment_intent_id,
+            amount_paid or None,
+            now,
+            booking_id,
+        ),
         commit=True,
     )
 
@@ -405,20 +616,146 @@ def ensure_extra_columns():
             cur.execute(
                 """
                 ALTER TABLE signups
+                ADD COLUMN IF NOT EXISTS address_line1 TEXT,
+                ADD COLUMN IF NOT EXISTS address_line2 TEXT,
+                ADD COLUMN IF NOT EXISTS address_line_1 TEXT,
+                ADD COLUMN IF NOT EXISTS address_line_2 TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_make TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_model TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_age TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_working TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_under_3_years TEXT,
+                ADD COLUMN IF NOT EXISTS boiler_warranty_valid TEXT,
+                ADD COLUMN IF NOT EXISTS existing_customer TEXT,
+                ADD COLUMN IF NOT EXISTS fix_and_join_fee TEXT,
+                ADD COLUMN IF NOT EXISTS signature TEXT,
+                ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS signature_name TEXT,
+                ADD COLUMN IF NOT EXISTS signature_data TEXT,
+                ADD COLUMN IF NOT EXISTS terms_accepted INTEGER,
+                ADD COLUMN IF NOT EXISTS privacy_accepted INTEGER,
+                ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN,
+                ADD COLUMN IF NOT EXISTS accepted_privacy BOOLEAN,
+                ADD COLUMN IF NOT EXISTS accepted_fair_usage BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS terms_version TEXT,
+                ADD COLUMN IF NOT EXISTS privacy_version TEXT,
                 ADD COLUMN IF NOT EXISTS customer_email_sent BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS admin_email_sent BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS reminder_due_date TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS status TEXT,
+                ADD COLUMN IF NOT EXISTS payment_status TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT,
+                ADD COLUMN IF NOT EXISTS stripe_payment_link_sent_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS payment_completed_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS last_payment_link_sent_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS contract_pdf BYTEA,
                 ADD COLUMN IF NOT EXISTS contract_pdf_filename TEXT,
-                ADD COLUMN IF NOT EXISTS contract_pdf_generated_at TIMESTAMP
+                ADD COLUMN IF NOT EXISTS contract_pdf_generated_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS ip_address TEXT,
+                ADD COLUMN IF NOT EXISTS user_agent TEXT
+                """
+            )
+
+            cur.execute(
+                """
+                UPDATE signups
+                SET address_line_1 = COALESCE(address_line_1, address_line1),
+                    address_line_2 = COALESCE(address_line_2, address_line2),
+                    fix_and_join_fee = COALESCE(
+                        fix_and_join_fee,
+                        CASE WHEN fix_and_join = 'Yes' THEN %s ELSE NULL END
+                    ),
+                    signature_name = COALESCE(signature_name, NULLIF(full_name, '')),
+                    signature_data = COALESCE(signature_data, signature),
+                    accepted_terms = COALESCE(
+                        accepted_terms,
+                        CASE
+                            WHEN terms_accepted IS NULL THEN NULL
+                            WHEN terms_accepted = 1 THEN TRUE
+                            ELSE FALSE
+                        END
+                    ),
+                    accepted_privacy = COALESCE(
+                        accepted_privacy,
+                        CASE
+                            WHEN privacy_accepted IS NULL THEN NULL
+                            WHEN privacy_accepted = 1 THEN TRUE
+                            ELSE FALSE
+                        END
+                    ),
+                    boiler_under_3_years = COALESCE(
+                        boiler_under_3_years,
+                        CASE
+                            WHEN boiler_age ~ '^[0-9]+$' AND boiler_age::INTEGER < 3 THEN 'Yes'
+                            WHEN boiler_age ~ '^[0-9]+$' THEN 'No'
+                            ELSE NULL
+                        END
+                    ),
+                    customer_email_sent = COALESCE(customer_email_sent, FALSE),
+                    admin_email_sent = COALESCE(admin_email_sent, FALSE),
+                    reminder_sent = COALESCE(reminder_sent, FALSE),
+                    last_payment_link_sent_at = COALESCE(last_payment_link_sent_at, stripe_payment_link_sent_at),
+                    stripe_payment_link_sent_at = COALESCE(stripe_payment_link_sent_at, last_payment_link_sent_at),
+                    updated_at = COALESCE(updated_at, created_at, NOW())
+                """
+            ,
+                (FIX_AND_JOIN_FEE,),
+            )
+
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS one_off_service_bookings (
+                    id SERIAL PRIMARY KEY,
+                    booking_type TEXT NOT NULL DEFAULT '{ONE_OFF_SERVICE_BOOKING_TYPE}',
+                    first_name TEXT NOT NULL,
+                    last_name TEXT NOT NULL,
+                    full_name TEXT,
+                    email TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    address_line_1 TEXT NOT NULL,
+                    address_line_2 TEXT,
+                    town TEXT NOT NULL,
+                    county TEXT,
+                    postcode TEXT NOT NULL,
+                    boiler_make TEXT,
+                    boiler_model TEXT,
+                    customer_notes TEXT,
+                    access_notes TEXT,
+                    preferred_dates TEXT,
+                    acknowledged_contact BOOLEAN DEFAULT FALSE,
+                    payment_status TEXT DEFAULT 'Pending',
+                    stripe_session_id TEXT,
+                    stripe_payment_intent_id TEXT,
+                    amount_paid NUMERIC(10, 2),
+                    status TEXT DEFAULT 'New',
+                    appointment_status TEXT DEFAULT 'To arrange',
+                    assigned_engineer TEXT,
+                    appointment_date DATE,
+                    appointment_time TEXT,
+                    customer_email_sent BOOLEAN DEFAULT FALSE,
+                    admin_email_sent BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+                )
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_one_off_bookings_stripe_session_id
+                ON one_off_service_bookings (stripe_session_id)
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_one_off_bookings_stripe_payment_intent_id
+                ON one_off_service_bookings (stripe_payment_intent_id)
                 """
             )
         conn.commit()
@@ -482,6 +819,33 @@ def create_checkout_session(signup_id, email, plan, fix_join="No", fix_and_join_
 
     return stripe.checkout.Session.create(**session_kwargs)
 
+
+def create_one_off_service_checkout_session(booking):
+    return stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[
+            {
+                "price": STRIPE_PRICE_ONE_OFF_SERVICE,
+                "quantity": 1,
+            }
+        ],
+        success_url=safe_success_url(),
+        cancel_url=url_for("annual_service_cancel", booking_id=booking["id"], _external=True),
+        customer_email=booking.get("email"),
+        client_reference_id=str(booking["id"]),
+        metadata={
+            "booking_type": ONE_OFF_SERVICE_BOOKING_TYPE,
+            "booking_id": str(booking["id"]),
+        },
+        payment_intent_data={
+            "metadata": {
+                "booking_type": ONE_OFF_SERVICE_BOOKING_TYPE,
+                "booking_id": str(booking["id"]),
+            }
+        },
+    )
+
 # -----------------------------------------------------------------------------
 # PDF GENERATION
 # -----------------------------------------------------------------------------
@@ -504,6 +868,7 @@ def decode_signature_to_tempfile(signature_data):
 
 
 def build_contract_pdf_bytes(signup):
+    signup = normalize_signup_record(signup)
     buffer = io.BytesIO()
     pdf = pdf_canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -726,6 +1091,7 @@ def build_email_attachments(signup, contract_pdf_bytes):
 # -----------------------------------------------------------------------------
 
 def send_customer_confirmation_email(signup, pdf_bytes):
+    signup = normalize_signup_record(signup)
     if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email"):
         logger.warning("Customer confirmation email skipped for signup %s", signup.get("id"))
         return False
@@ -793,6 +1159,7 @@ def send_customer_confirmation_email(signup, pdf_bytes):
 
 
 def send_admin_notification_email(signup, pdf_bytes):
+    signup = normalize_signup_record(signup)
     if not resend.api_key or not RESEND_FROM_EMAIL or not ADMIN_NOTIFICATION_EMAIL:
         logger.warning("Admin notification email skipped for signup %s", signup.get("id"))
         return False
@@ -836,6 +1203,7 @@ def send_admin_notification_email(signup, pdf_bytes):
 
 
 def send_service_reminder_email(signup):
+    signup = normalize_signup_record(signup)
     if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email"):
         logger.warning("Reminder email skipped for signup %s", signup.get("id"))
         return False
@@ -869,6 +1237,7 @@ def send_service_reminder_email(signup):
 
 
 def send_payment_link_email(signup, payment_url):
+    signup = normalize_signup_record(signup)
     if not resend.api_key or not RESEND_FROM_EMAIL or not signup.get("email") or not payment_url:
         logger.warning("Payment link email skipped for signup %s", signup.get("id"))
         return False
@@ -914,6 +1283,97 @@ def send_payment_link_email(signup, payment_url):
     return True
 
 
+def send_one_off_customer_confirmation_email(booking):
+    booking = normalize_one_off_booking(booking)
+    if not resend.api_key or not RESEND_FROM_EMAIL or not booking.get("email"):
+        logger.warning("Customer confirmation email skipped for one-off booking %s", booking.get("id"))
+        return False
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;background:#0b0b0b;padding:30px;">
+      <div style="max-width:560px;margin:auto;background:#171717;border-radius:16px;padding:30px;color:#ffffff;border:1px solid #2a2a2a;">
+        <h2 style="color:#ff6a00;margin:0 0 12px;">Booking received</h2>
+
+        <p style="color:#c5c5c5;line-height:1.6;margin:0 0 20px;">
+          Thanks for booking with {COMPANY_NAME}. Your £{ONE_OFF_SERVICE_PRICE} one-off annual boiler service has been received.
+        </p>
+
+        <div style="background:#202020;padding:16px;border-radius:12px;margin:20px 0;line-height:1.8;">
+          <p style="margin:0 0 8px;"><strong>Name:</strong> {booking.get('full_name') or '-'}</p>
+          <p style="margin:0 0 8px;"><strong>Booking:</strong> One-Off Annual Boiler Service</p>
+          <p style="margin:0 0 8px;"><strong>Payment status:</strong> {booking.get('payment_status') or '-'}</p>
+          <p style="margin:0;"><strong>Address:</strong> {build_full_address(booking) or '-'}</p>
+        </div>
+
+        <p style="margin:0 0 12px;color:#c5c5c5;">
+          We’ll contact you to confirm the appointment once we’ve reviewed your preferred dates and access notes.
+        </p>
+
+        <p style="margin:0 0 8px;"><strong>Phone:</strong> {booking.get('phone') or '-'}</p>
+        <p style="margin:0 0 8px;"><strong>Email:</strong> {booking.get('email') or '-'}</p>
+        <p style="margin:0 0 8px;"><strong>Preferred dates / notes:</strong> {booking.get('preferred_dates') or booking.get('customer_notes') or '-'}</p>
+        <p style="margin:0 0 20px;"><strong>Access notes:</strong> {booking.get('access_notes') or '-'}</p>
+
+        <p style="margin:20px 0 0;color:#c5c5c5;">
+          Need anything? Call us on <strong style="color:#ffffff;">{COMPANY_PHONE}</strong> or email
+          <strong style="color:#ffffff;">{COMPANY_EMAIL}</strong>.
+        </p>
+      </div>
+    </div>
+    """
+
+    resend.Emails.send(
+        {
+            "from": RESEND_FROM_EMAIL,
+            "to": [booking["email"]],
+            "subject": "Your SJM Heating annual boiler service booking",
+            "html": html,
+        }
+    )
+    return True
+
+
+def send_one_off_admin_notification_email(booking):
+    booking = normalize_one_off_booking(booking)
+    if not resend.api_key or not RESEND_FROM_EMAIL or not ADMIN_NOTIFICATION_EMAIL:
+        logger.warning("Admin notification email skipped for one-off booking %s", booking.get("id"))
+        return False
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
+      <h2>New one-off annual boiler service booking</h2>
+
+      <p><strong>Type:</strong> One-Off Annual Boiler Service</p>
+      <p><strong>Amount:</strong> £{ONE_OFF_SERVICE_PRICE}</p>
+      <p><strong>Payment status:</strong> {booking.get('payment_status') or '-'}</p>
+      <p><strong>Stripe session:</strong> {booking.get('stripe_session_id') or '-'}</p>
+      <p><strong>Stripe payment reference:</strong> {booking.get('stripe_payment_intent_id') or '-'}</p>
+
+      <hr>
+
+      <p><strong>Name:</strong> {booking.get('full_name') or '-'}</p>
+      <p><strong>Email:</strong> {booking.get('email') or '-'}</p>
+      <p><strong>Phone:</strong> {booking.get('phone') or '-'}</p>
+      <p><strong>Address:</strong> {build_full_address(booking) or '-'}</p>
+      <p><strong>Boiler make:</strong> {booking.get('boiler_make') or '-'}</p>
+      <p><strong>Boiler model:</strong> {booking.get('boiler_model') or '-'}</p>
+      <p><strong>Preferred dates / notes:</strong> {booking.get('preferred_dates') or '-'}</p>
+      <p><strong>Customer notes:</strong> {booking.get('customer_notes') or '-'}</p>
+      <p><strong>Access notes:</strong> {booking.get('access_notes') or '-'}</p>
+    </div>
+    """
+
+    resend.Emails.send(
+        {
+            "from": RESEND_FROM_EMAIL,
+            "to": [ADMIN_NOTIFICATION_EMAIL],
+            "subject": "New one-off annual boiler service booking",
+            "html": html,
+        }
+    )
+    return True
+
+
 def send_post_payment_emails(signup_id):
     ensure_extra_columns()
     signup = fetch_signup(signup_id)
@@ -940,17 +1400,55 @@ def send_post_payment_emails(signup_id):
         except Exception:
             logger.exception("Failed sending admin notification email for signup %s", signup_id)
 
+
+def send_one_off_post_payment_emails(booking_id):
+    ensure_extra_columns()
+    booking = fetch_one_off_booking(booking_id)
+    if not booking:
+        logger.warning("One-off booking %s not found for post-payment emails.", booking_id)
+        return
+
+    if not booking.get("customer_email_sent"):
+        try:
+            if send_one_off_customer_confirmation_email(booking):
+                update_one_off_booking_email_status(booking_id, customer_sent=True)
+        except Exception:
+            logger.exception("Failed sending customer confirmation email for one-off booking %s", booking_id)
+
+    if not booking.get("admin_email_sent"):
+        try:
+            if send_one_off_admin_notification_email(booking):
+                update_one_off_booking_email_status(booking_id, admin_sent=True)
+        except Exception:
+            logger.exception("Failed sending admin notification email for one-off booking %s", booking_id)
+
 # -----------------------------------------------------------------------------
 # STRIPE EVENT HANDLING
 # -----------------------------------------------------------------------------
 
 def handle_completed_checkout_session(checkout):
-    signup_id = None
-    try:
-        signup_id = checkout.metadata.get("signup_id")
-    except Exception:
-        pass
+    ensure_extra_columns()
+    metadata = get_checkout_metadata(checkout)
+    booking_type = metadata.get("booking_type")
 
+    if booking_type == ONE_OFF_SERVICE_BOOKING_TYPE:
+        booking_id = metadata.get("booking_id")
+        if not booking_id:
+            logger.warning("Completed one-off Stripe session had no booking_id metadata.")
+            return
+
+        booking = fetch_one_off_booking(booking_id)
+        if not booking:
+            logger.warning("One-off booking %s not found for completed Stripe session.", booking_id)
+            return
+
+        if booking.get("payment_status") != "Paid":
+            mark_one_off_booking_paid(booking_id, checkout)
+
+        send_one_off_post_payment_emails(booking_id)
+        return
+
+    signup_id = metadata.get("signup_id")
     if not signup_id:
         logger.warning("Completed Stripe session had no signup_id metadata.")
         return
@@ -971,12 +1469,30 @@ def handle_completed_checkout_session(checkout):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", plan_prices=PLAN_PRICES)
 
 
 @app.route("/signup", methods=["GET"])
 def signup():
-    return render_template("signup.html", plan_prices=PLAN_PRICES)
+    return render_template(
+        "signup.html",
+        plan_prices=PLAN_PRICES,
+        journey_mode="signup",
+    )
+
+
+@app.route("/fix-and-join", methods=["GET"])
+def fix_and_join():
+    return render_template(
+        "signup.html",
+        plan_prices=PLAN_PRICES,
+        journey_mode="fix_and_join",
+    )
+
+
+@app.route("/book-annual-service", methods=["GET"])
+def book_annual_service():
+    return render_template("book_annual_service.html")
 
 @app.route("/success")
 def success():
@@ -991,6 +1507,21 @@ def success():
             signup_row = None
 
     return render_template("success.html", signup=signup_row)
+
+
+@app.route("/annual-service/success")
+def annual_service_success():
+    booking_id = request.args.get("booking_id")
+    booking = None
+
+    if booking_id:
+        try:
+            booking = fetch_one_off_booking(booking_id)
+        except Exception:
+            logger.exception("Could not fetch one-off booking %s for success page.", booking_id)
+            booking = None
+
+    return render_template("annual_service_success.html", booking=booking)
 
 
 @app.route("/terms")
@@ -1052,15 +1583,17 @@ def postcode_lookup():
 @app.route("/submit", methods=["POST"])
 def submit():
     ensure_extra_columns()
+    journey_mode = clean(request.form.get("journey_mode")) or "signup"
+    error_route = "fix_and_join" if journey_mode == "fix_and_join" else "signup"
 
     if looks_like_bot_submission(request.form):
         flash("We could not verify your submission. Please try again.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     missing_env = validate_required_env()
     if missing_env:
         flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     name = clean(request.form.get("full_name"))
     email = clean(request.form.get("email"))
@@ -1071,10 +1604,11 @@ def submit():
     city = clean(request.form.get("city"))
     postcode = clean(request.form.get("postcode")).upper()
 
-    broken = clean(request.form.get("boiler_broken"))
+    broken = "Yes" if journey_mode == "fix_and_join" else clean(request.form.get("boiler_broken"))
     under3 = clean(request.form.get("boiler_under_3_years"))
     warranty = clean(request.form.get("boiler_warranty_valid"))
-
+    boiler_make = clean(request.form.get("boiler_make"))
+    boiler_model = clean(request.form.get("boiler_model"))
     plan = clean(request.form.get("selected_plan"))
     fix_join = "Yes" if broken == "Yes" else "No"
     fix_and_join_fee = FIX_AND_JOIN_FEE if fix_join == "Yes" else ""
@@ -1087,16 +1621,16 @@ def submit():
 
     if not name or not email or not address_line_1 or not city or not postcode:
         flash("Please complete all required fields.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     if broken not in ["Yes", "No"]:
         flash("Please answer whether the boiler is currently broken.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     if broken == "No":
         if under3 not in ["Yes", "No"] or warranty not in ["Yes", "No"]:
             flash("Please answer the age and warranty questions.", "error")
-            return redirect(url_for("signup"))
+            return redirect(url_for(error_route))
     else:
         under3 = ""
         warranty = ""
@@ -1104,29 +1638,45 @@ def submit():
     eligible_plans, _ = get_eligible_plans(broken, under3, warranty)
 
     if plan not in eligible_plans:
-        if "Standard" in eligible_plans:
-            plan = "Standard"
+        if broken == "Yes":
+            flash(
+                "Because your boiler is currently broken, please choose Standard or Complete through Fix & Join.",
+                "error",
+            )
+            return redirect(url_for("fix_and_join"))
+
+        if under3 == "No" and warranty == "No":
+            flash(
+                "Because your boiler is over 3 years old or outside manufacturer warranty, the Essential Plan isn’t available. Please choose Standard or Complete.",
+                "error",
+            )
         else:
-            plan = eligible_plans[0]
+            flash("Please choose one of the available service plans.", "error")
+        return redirect(url_for("signup"))
 
     if not signature_name:
         flash("Please enter your typed signature name.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     if not signature_data or not signature_data.startswith("data:image/png;base64,"):
         flash("Please provide your drawn signature.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     if not accepted_terms or not accepted_privacy or not accepted_fair_usage:
         flash("Please accept the Terms, Privacy Policy, and Fair Usage Policy.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     if not STRIPE_PRICES.get(plan):
         flash(f"Stripe price is not configured for {plan}.", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     now = datetime.now(UTC)
     reminder_due_date = now + timedelta(days=335)
+    boiler_age = ""
+    if under3 == "Yes":
+        boiler_age = "Under 3 years"
+    elif under3 == "No":
+        boiler_age = "Over 3 years"
 
     conn = get_db_connection()
     try:
@@ -1137,30 +1687,50 @@ def submit():
                     full_name,
                     email,
                     phone,
+                    address_line1,
+                    address_line2,
                     address_line_1,
                     address_line_2,
                     city,
                     postcode,
+                    boiler_make,
+                    boiler_model,
+                    boiler_age,
+                    boiler_working,
                     selected_plan,
                     monthly_price,
                     boiler_broken,
                     boiler_under_3_years,
                     boiler_warranty_valid,
+                    existing_customer,
                     fix_and_join,
                     fix_and_join_fee,
                     signature_name,
                     signature_data,
+                    signature,
+                    signed_at,
                     accepted_terms,
                     accepted_privacy,
                     accepted_fair_usage,
+                    terms_accepted,
+                    privacy_accepted,
+                    terms_version,
+                    privacy_version,
                     status,
                     payment_status,
                     created_at,
                     updated_at,
                     reminder_due_date,
-                    reminder_sent
+                    reminder_sent,
+                    ip_address,
+                    user_agent
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                )
                 RETURNING id
                 """,
                 (
@@ -1169,26 +1739,41 @@ def submit():
                     phone,
                     address_line_1,
                     address_line_2,
+                    address_line_1,
+                    address_line_2,
                     city,
                     postcode,
+                    boiler_make,
+                    boiler_model,
+                    boiler_age,
+                    "No" if broken == "Yes" else "Yes",
                     plan,
                     PLAN_PRICES[plan],
                     broken,
                     under3,
                     warranty,
+                    "",
                     fix_join,
                     fix_and_join_fee,
                     signature_name,
                     signature_data,
+                    signature_data,
+                    now,
                     accepted_terms,
                     accepted_privacy,
                     accepted_fair_usage,
+                    1 if accepted_terms else 0,
+                    1 if accepted_privacy else 0,
+                    TERMS_VERSION,
+                    PRIVACY_VERSION,
                     "New",
                     "Not sent",
                     now,
                     now,
                     reminder_due_date,
                     False,
+                    request.headers.get("X-Forwarded-For", request.remote_addr or ""),
+                    request.headers.get("User-Agent", ""),
                 ),
             )
             signup_id = cur.fetchone()["id"]
@@ -1217,15 +1802,148 @@ def submit():
         )
         logger.exception("Unable to create Stripe checkout for signup %s", signup_id)
         flash(f"Unable to create Stripe checkout: {e}", "error")
-        return redirect(url_for("signup"))
+        return redirect(url_for(error_route))
 
     mark_payment_link_generated(signup_id, checkout_session.url, checkout_session.id)
     return redirect(checkout_session.url)
 
 
+@app.route("/annual-service/submit", methods=["POST"])
+def submit_annual_service():
+    ensure_extra_columns()
+
+    if looks_like_bot_submission(request.form):
+        flash("We could not verify your submission. Please try again.", "error")
+        return redirect(url_for("book_annual_service"))
+
+    missing_env = validate_required_env(include_monthly_prices=False, include_one_off_price=True)
+    if missing_env:
+        flash(
+            "Online payment for annual services is not configured yet. Please contact us and we’ll book it in manually.",
+            "error",
+        )
+        logger.error("One-off service booking blocked by missing env: %s", ", ".join(missing_env))
+        return redirect(url_for("book_annual_service"))
+
+    first_name = clean(request.form.get("first_name"))
+    last_name = clean(request.form.get("last_name"))
+    full_name = " ".join(part for part in [first_name, last_name] if part)
+    email = clean(request.form.get("email"))
+    phone = clean(request.form.get("phone"))
+    address_line_1 = clean(request.form.get("address_line_1"))
+    address_line_2 = clean(request.form.get("address_line_2"))
+    town = clean(request.form.get("town"))
+    county = clean(request.form.get("county"))
+    postcode = clean(request.form.get("postcode")).upper()
+    boiler_make = clean(request.form.get("boiler_make"))
+    boiler_model = clean(request.form.get("boiler_model"))
+    preferred_dates = clean(request.form.get("preferred_dates"))
+    customer_notes = clean(request.form.get("customer_notes"))
+    access_notes = clean(request.form.get("access_notes"))
+    acknowledged_contact = checkbox_to_bool(request.form.get("acknowledged_contact"))
+
+    if not first_name or not last_name or not email or not phone or not address_line_1 or not town or not postcode:
+        flash("Please complete the required booking details.", "error")
+        return redirect(url_for("book_annual_service"))
+
+    if not acknowledged_contact:
+        flash("Please confirm that we’ll contact you to arrange the appointment.", "error")
+        return redirect(url_for("book_annual_service"))
+
+    now = datetime.now(UTC)
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO one_off_service_bookings (
+                    booking_type,
+                    first_name,
+                    last_name,
+                    full_name,
+                    email,
+                    phone,
+                    address_line_1,
+                    address_line_2,
+                    town,
+                    county,
+                    postcode,
+                    boiler_make,
+                    boiler_model,
+                    customer_notes,
+                    access_notes,
+                    preferred_dates,
+                    acknowledged_contact,
+                    payment_status,
+                    status,
+                    appointment_status,
+                    assigned_engineer,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id
+                """,
+                (
+                    ONE_OFF_SERVICE_BOOKING_TYPE,
+                    first_name,
+                    last_name,
+                    full_name,
+                    email,
+                    phone,
+                    address_line_1,
+                    address_line_2,
+                    town,
+                    county,
+                    postcode,
+                    boiler_make,
+                    boiler_model,
+                    customer_notes,
+                    access_notes,
+                    preferred_dates,
+                    acknowledged_contact,
+                    "Pending",
+                    "New",
+                    "To arrange",
+                    DEFAULT_ASSIGNED_ENGINEER,
+                    now,
+                    now,
+                ),
+            )
+            booking_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        conn.close()
+
+    booking = fetch_one_off_booking(booking_id)
+
+    try:
+        checkout_session = create_one_off_service_checkout_session(booking)
+    except Exception:
+        db_execute(
+            """
+            UPDATE one_off_service_bookings
+            SET payment_status='Failed',
+                updated_at=%s
+            WHERE id=%s
+            """,
+            (datetime.now(UTC), booking_id),
+            commit=True,
+        )
+        logger.exception("Unable to create Stripe checkout for one-off booking %s", booking_id)
+        flash(
+            "We couldn’t start online payment just now. Please try again or contact us and we’ll arrange the booking manually.",
+            "error",
+        )
+        return redirect(url_for("book_annual_service"))
+
+    mark_one_off_checkout_created(booking_id, checkout_session)
+    return redirect(checkout_session.url)
+
+
 @app.route("/stripe/success")
 def stripe_success():
-    ensure_extra_columns()
     session_id = request.args.get("session_id")
 
     if not session_id:
@@ -1233,18 +1951,18 @@ def stripe_success():
 
     try:
         checkout = stripe.checkout.Session.retrieve(session_id)
-        signup_id = checkout.metadata.get("signup_id")
     except Exception as e:
         logger.exception("Could not verify Stripe success session.")
         flash(f"Could not verify payment session: {e}", "error")
         return render_template("stripe_success.html")
 
-    if not signup_id:
-        flash("Could not match this payment to a signup.", "error")
-        return render_template("stripe_success.html")
+    metadata = get_checkout_metadata(checkout)
+    booking_type = metadata.get("booking_type")
+    signup_id = metadata.get("signup_id")
+    booking_id = metadata.get("booking_id")
 
     paid_statuses = {"paid", "no_payment_required"}
-    checkout_status = getattr(checkout, "payment_status", None)
+    checkout_status = get_checkout_value(checkout, "payment_status")
 
     if checkout_status in paid_statuses:
         try:
@@ -1257,6 +1975,16 @@ def stripe_success():
             session_id,
             checkout_status,
         )
+
+    if booking_type == ONE_OFF_SERVICE_BOOKING_TYPE:
+        if not booking_id:
+            flash("Could not match this payment to your annual service booking.", "error")
+            return render_template("stripe_success.html")
+        return redirect(url_for("annual_service_success", booking_id=booking_id))
+
+    if not signup_id:
+        flash("Could not match this payment to a signup.", "error")
+        return render_template("stripe_success.html")
 
     return redirect(url_for("success", signup_id=signup_id))
 
@@ -1297,9 +2025,34 @@ def stripe_webhook():
     return {"received": True}, 200
 
 
+@app.route("/annual-service/cancel")
+def annual_service_cancel():
+    booking_id = request.args.get("booking_id")
+    if booking_id:
+        try:
+            mark_one_off_booking_cancelled(booking_id)
+        except Exception:
+            logger.exception("Could not mark one-off booking %s as cancelled.", booking_id)
+
+    flash("Your payment was cancelled. You can review your annual service booking and try again.", "warning")
+    return render_template(
+        "stripe-cancel.html",
+        return_url=url_for("book_annual_service"),
+        return_text="Back to annual service form",
+        cancel_title="Payment cancelled",
+        cancel_message="Your annual service payment was not completed.",
+    )
+
+
 @app.route("/stripe/cancel")
 def stripe_cancel():
-    return render_template("stripe_cancel.html")
+    return render_template(
+        "stripe-cancel.html",
+        return_url=url_for("signup"),
+        return_text="Try again",
+        cancel_title="Payment cancelled",
+        cancel_message="Your payment was not completed.",
+    )
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -1329,13 +2082,22 @@ def admin():
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM signups ORDER BY id DESC")
-            rows = cur.fetchall()
+            rows = normalize_signup_rows(cur.fetchall())
 
             cur.execute("SELECT COUNT(*) FROM signups")
             total = cur.fetchone()["count"]
 
             cur.execute("SELECT COUNT(*) FROM signups WHERE payment_status='Paid'")
             paid = cur.fetchone()["count"]
+
+            cur.execute("SELECT * FROM one_off_service_bookings ORDER BY id DESC")
+            one_off_rows = normalize_one_off_rows(cur.fetchall())
+
+            cur.execute("SELECT COUNT(*) FROM one_off_service_bookings")
+            one_off_total = cur.fetchone()["count"]
+
+            cur.execute("SELECT COUNT(*) FROM one_off_service_bookings WHERE payment_status='Paid'")
+            one_off_paid = cur.fetchone()["count"]
     finally:
         conn.close()
 
@@ -1343,16 +2105,70 @@ def admin():
         "total": total,
         "paid": paid,
         "conversion": round((paid / total) * 100, 1) if total else 0,
+        "one_off_total": one_off_total,
+        "one_off_paid": one_off_paid,
     }
 
     return render_template(
         "admin.html",
         signups=rows,
+        one_off_bookings=one_off_rows,
         stats=stats,
+        one_off_statuses=ONE_OFF_BOOKING_STATUSES,
+        appointment_statuses=ONE_OFF_APPOINTMENT_STATUSES,
         build_maps_link=build_maps_link,
         build_directions_link=build_directions_link,
         build_full_address=build_full_address,
     )
+
+
+@app.route("/admin/annual-service/<int:booking_id>/update", methods=["POST"])
+@login_required
+def update_annual_service_booking(booking_id):
+    booking = fetch_one_off_booking(booking_id)
+    if not booking:
+        flash("Annual service booking not found.", "error")
+        return redirect(url_for("admin"))
+
+    status = clean(request.form.get("status"))
+    appointment_status = clean(request.form.get("appointment_status"))
+    assigned_engineer = clean(request.form.get("assigned_engineer")) or DEFAULT_ASSIGNED_ENGINEER
+    appointment_date = clean(request.form.get("appointment_date")) or None
+    appointment_time = clean(request.form.get("appointment_time")) or None
+
+    if status not in ONE_OFF_BOOKING_STATUSES:
+        flash("Please choose a valid booking status.", "error")
+        return redirect(url_for("admin"))
+
+    if appointment_status not in ONE_OFF_APPOINTMENT_STATUSES:
+        flash("Please choose a valid appointment status.", "error")
+        return redirect(url_for("admin"))
+
+    db_execute(
+        """
+        UPDATE one_off_service_bookings
+        SET status=%s,
+            appointment_status=%s,
+            assigned_engineer=%s,
+            appointment_date=%s,
+            appointment_time=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (
+            status,
+            appointment_status,
+            assigned_engineer,
+            appointment_date,
+            appointment_time,
+            datetime.now(UTC),
+            booking_id,
+        ),
+        commit=True,
+    )
+
+    flash("Annual service booking updated.", "success")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/resend/<int:id>", methods=["POST"])

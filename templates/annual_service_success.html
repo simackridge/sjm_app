@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Annual Service Booking{% endblock %}
+
+{% block content %}
+<div class="success-wrap">
+  <div class="success-card success-card-wide">
+    <div class="success-icon">✓</div>
+
+    <h1>Annual service booked</h1>
+    <p class="success-sub">
+      Thanks — your annual boiler service request has been received.
+    </p>
+
+    {% if booking %}
+      <div class="success-summary">
+        <div><strong>Name:</strong> {{ booking.full_name or "-" }}</div>
+        <div><strong>Booking type:</strong> One-Off Annual Boiler Service</div>
+        <div><strong>Payment status:</strong> {{ booking.payment_status or "-" }}</div>
+        <div><strong>Contact:</strong> {{ booking.email or "-" }}{% if booking.phone %} | {{ booking.phone }}{% endif %}</div>
+        <div><strong>Address:</strong> {{ build_full_address(booking) or "-" }}</div>
+        <div><strong>Preferred dates / notes:</strong> {{ booking.preferred_dates or booking.customer_notes or "-" }}</div>
+        {% if booking.access_notes %}
+          <div><strong>Access notes:</strong> {{ booking.access_notes }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="success-next">
+      <h3>What happens next?</h3>
+      <ul>
+        <li>Your £{{ one_off_service_price }} payment has been completed.</li>
+        <li>{{ company_name }} will contact you to confirm the appointment.</li>
+        <li>If your boiler is currently broken or unsafe, please contact us directly.</li>
+      </ul>
+    </div>
+
+    <div class="success-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to home</a>
+      <a href="tel:{{ company_phone }}" class="btn btn-primary">Call us</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

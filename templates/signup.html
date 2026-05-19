@@ -1,24 +1,55 @@
 {% extends "base.html" %}
 
-{% block title %}{{ company_name }} | Sign Up{% endblock %}
+{% set is_fix_and_join = journey_mode == "fix_and_join" %}
+
+{% block title %}
+  {% if is_fix_and_join %}
+    {{ company_name }} | Fix & Join
+  {% else %}
+    {{ company_name }} | Sign Up
+  {% endif %}
+{% endblock %}
 
 {% block content %}
 <section class="page-header">
-  <h1>Join an SJM Service Plan</h1>
-  <p>Complete the steps below to set up your cover.</p>
+  {% if is_fix_and_join %}
+    <h1>Fix & Join</h1>
+    <p>Your boiler is currently broken, so we’ll start with the right route for inspection, diagnosis and ongoing cover.</p>
+  {% else %}
+    <h1>Join an SJM Service Plan</h1>
+    <p>Choose the cover that suits your boiler. If your boiler is newer or still under manufacturer warranty, you can still choose a higher level of cover if you’d prefer extra peace of mind.</p>
+  {% endif %}
 </section>
+
+<div class="card route-switch-card">
+  {% if is_fix_and_join %}
+    <p>
+      Need a normal plan instead? <a href="{{ url_for('signup') }}">Go back to service plan signup</a>.
+    </p>
+  {% else %}
+    <p>
+      Not ready for a monthly service plan? <a href="{{ url_for('book_annual_service') }}">Book your annual service online</a>.
+    </p>
+  {% endif %}
+</div>
 
 <div class="card form-card signup-card">
   <form method="POST" action="{{ url_for('submit') }}" id="signupForm">
     <input type="text" name="contact_reference" style="display:none">
+    <input type="hidden" name="journey_mode" value="{{ journey_mode }}">
+    {% if is_fix_and_join %}
+      <input type="hidden" name="boiler_broken" value="Yes">
+    {% endif %}
 
     <div class="step active" id="step1">
       <div class="step-badge">Step 1 of 5</div>
       <h2>Your Details</h2>
-      <p class="step-intro">Tell us who the plan is for.</p>
+      <p class="step-intro">
+        Tell us who the cover is for.
+      </p>
 
       <div class="field-group">
-        <input id="full_name" name="full_name" placeholder="Full Name *" required>
+        <input id="full_name" name="full_name" placeholder="Full name *" required>
         <input id="email" name="email" type="email" placeholder="Email *" required>
         <input id="phone" name="phone" placeholder="Phone">
       </div>
@@ -45,13 +76,13 @@
 
       <div class="field-group address-group">
         <div class="field">
-          <label for="address1">Address Line 1 *</label>
+          <label for="address1">Address line 1 *</label>
           <input id="address1" name="address_line_1" placeholder="House number and street *" required>
         </div>
 
         <div class="field">
-          <label for="address2">Address Line 2</label>
-          <input id="address2" name="address_line_2" placeholder="Address Line 2">
+          <label for="address2">Address line 2</label>
+          <input id="address2" name="address_line_2" placeholder="Address line 2">
         </div>
 
         <div class="field">
@@ -68,51 +99,88 @@
 
     <div class="step" id="step3">
       <div class="step-badge">Step 3 of 5</div>
-      <h2>Your Boiler</h2>
-      <p class="step-intro">We use this to work out the right plan options.</p>
 
-      <div class="field-group">
-        <select id="broken" name="boiler_broken" onchange="updateFlow()" required>
-          <option value="">Is your boiler broken? *</option>
-          <option value="No">No</option>
-          <option value="Yes">Yes</option>
-        </select>
-      </div>
+      {% if is_fix_and_join %}
+        <h2>Fix &amp; Join route</h2>
+        <p class="step-intro">
+          Because your boiler is currently broken, this journey includes the existing Fix &amp; Join process before ongoing cover starts.
+        </p>
 
-      <div id="extraQuestions" class="question-grid">
-        <select id="under3" name="boiler_under_3_years">
-          <option value="">Under 3 years old? *</option>
-          <option value="Yes">Yes</option>
-          <option value="No">No</option>
-        </select>
+        <div class="note-box warning-box">
+          <strong>Important:</strong><br>
+          Fix &amp; Join includes a one-off fee of £{{ fix_and_join_fee }}. Work remains subject to inspection, diagnosis and system suitability.
+        </div>
+      {% else %}
+        <h2>Your Boiler</h2>
+        <p class="step-intro">We use this to work out the right plan options.</p>
 
-        <select id="warranty" name="boiler_warranty_valid">
-          <option value="">Still under warranty? *</option>
-          <option value="Yes">Yes</option>
-          <option value="No">No</option>
-        </select>
+        <div class="field-group">
+          <select id="broken" name="boiler_broken" onchange="updateFlow()" required>
+            <option value="">Is your boiler currently broken? *</option>
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+
+        <div id="brokenRouteMessage" class="note-box warning-box" style="display:none;">
+          Because your boiler is currently broken, we’ll move you into Fix &amp; Join so the inspection/diagnosis requirement and £{{ fix_and_join_fee }} fee are handled properly.
+        </div>
+
+        <div id="extraQuestions" class="question-grid">
+          <select id="under3" name="boiler_under_3_years">
+            <option value="">Under 3 years old? *</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+
+          <select id="warranty" name="boiler_warranty_valid">
+            <option value="">Still under manufacturer warranty? *</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+      {% endif %}
+
+      <div class="field-group boiler-details-group">
+        <div class="field">
+          <label for="boiler_make">Boiler make</label>
+          <input id="boiler_make" name="boiler_make" placeholder="Boiler make, if known">
+        </div>
+
+        <div class="field">
+          <label for="boiler_model">Boiler model</label>
+          <input id="boiler_model" name="boiler_model" placeholder="Boiler model, if known">
+        </div>
       </div>
 
       <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
-        <button type="button" class="btn btn-primary" onclick="goToPlanStep()">Next</button>
+        <button type="button" class="btn btn-primary" onclick="goToPlanStep()">
+          {% if is_fix_and_join %}Continue{% else %}Next{% endif %}
+        </button>
       </div>
     </div>
 
     <div class="step" id="step4">
       <div class="step-badge">Step 4 of 5</div>
-      <h2>Select Plan</h2>
-      <p class="step-intro">Choose the plan that best fits your boiler and cover needs.</p>
+      <h2 id="planStepHeading">{% if is_fix_and_join %}Choose your ongoing plan{% else %}Choose your cover{% endif %}</h2>
+      <p class="step-intro" id="planStepIntro">
+        {% if is_fix_and_join %}
+          Choose the cover you want in place after the initial Fix &amp; Join visit.
+        {% else %}
+          Choose the plan that best fits your boiler and the level of cover you want.
+        {% endif %}
+      </p>
 
-      <div class="field-group">
-        <select id="plan" name="selected_plan" required>
-          <option value="">Choose a plan *</option>
-        </select>
+      <div id="eligibilityMessage" class="note-box" style="display:none;"></div>
+
+      <div id="fixJoinBox" class="note-box warning-box" {% if is_fix_and_join %}style="display:block;"{% else %}style="display:none;"{% endif %}>
+        Your boiler is broken, so a one-off Fix &amp; Join fee of £{{ fix_and_join_fee }} will apply before the chosen plan starts.
       </div>
 
-      <div id="fixJoinBox" class="note-box warning-box" style="display:none; margin-top:14px;">
-        Your boiler is broken, so a one-off Fix &amp; Join fee of £{{ fix_and_join_fee }} will apply.
-      </div>
+      <input type="hidden" id="selectedPlanInput" name="selected_plan" required>
+
+      <div id="planCards" class="selection-grid"></div>
 
       <div class="step-actions">
         <button type="button" class="btn btn-secondary" onclick="nextStep(3)">Back</button>
@@ -123,7 +191,13 @@
     <div class="step" id="step5">
       <div class="step-badge">Step 5 of 5</div>
       <h2>Agreement & Signature</h2>
-      <p class="step-intro">Please confirm your details and sign below.</p>
+      <p class="step-intro">
+        {% if is_fix_and_join %}
+          Please confirm your details and sign to continue to payment.
+        {% else %}
+          Please confirm your details and sign below.
+        {% endif %}
+      </p>
 
       <div class="field-group">
         <input id="signature_name" name="signature_name" placeholder="Type your full name *" required>
@@ -165,6 +239,34 @@
 </div>
 
 <script>
+const isFixAndJoin = {{ "true" if is_fix_and_join else "false" }};
+const fixAndJoinUrl = "{{ url_for('fix_and_join') }}";
+const draftStorageKey = 'sjmServicePlanDraft';
+const planPrices = {{ plan_prices | tojson }};
+const planDefinitions = [
+  {
+    key: 'Essential',
+    title: 'Essential Plan',
+    price: `£${planPrices.Essential}/month`,
+    description: 'Best suited to newer boilers and a lower level of cover.',
+    bullets: ['Annual boiler service included', 'Straightforward monthly cover', 'Recommended for newer boilers']
+  },
+  {
+    key: 'Standard',
+    title: 'Standard Plan',
+    price: `£${planPrices.Standard}/month`,
+    description: 'Boiler-only cover for customers who want breakdown protection without full heating system cover.',
+    bullets: ['Annual service included', 'Boiler cover']
+  },
+  {
+    key: 'Complete',
+    title: 'Complete Plan',
+    price: `£${planPrices.Complete}/month`,
+    description: 'Our full heating system option for customers who want broader cover beyond just the boiler.',
+    bullets: ['Annual service included', 'Full heating system cover', 'Broader protection beyond the boiler']
+  }
+];
+
 function nextStep(step) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step' + step).classList.add('active');
@@ -172,6 +274,51 @@ function nextStep(step) {
 
   if (step === 5) {
     setTimeout(resizeCanvas, 50);
+  }
+}
+
+function getDraftValues() {
+  return {
+    full_name: document.getElementById('full_name')?.value || '',
+    email: document.getElementById('email')?.value || '',
+    phone: document.getElementById('phone')?.value || '',
+    postcode: document.getElementById('postcode')?.value || '',
+    address_line_1: document.getElementById('address1')?.value || '',
+    address_line_2: document.getElementById('address2')?.value || '',
+    city: document.getElementById('city')?.value || '',
+    boiler_broken: document.getElementById('broken')?.value || '',
+    boiler_under_3_years: document.getElementById('under3')?.value || '',
+    boiler_warranty_valid: document.getElementById('warranty')?.value || '',
+    boiler_make: document.getElementById('boiler_make')?.value || '',
+    boiler_model: document.getElementById('boiler_model')?.value || '',
+    selected_plan: document.getElementById('selectedPlanInput')?.value || ''
+  };
+}
+
+function storeDraft(targetMode) {
+  const payload = {
+    targetMode: targetMode || (isFixAndJoin ? 'fix_and_join' : 'signup'),
+    values: getDraftValues()
+  };
+  sessionStorage.setItem(draftStorageKey, JSON.stringify(payload));
+}
+
+function restoreDraft() {
+  const raw = sessionStorage.getItem(draftStorageKey);
+  if (!raw) return;
+
+  try {
+    const payload = JSON.parse(raw);
+    const values = payload.values || {};
+
+    Object.entries(values).forEach(([key, value]) => {
+      const field = document.querySelector(`[name="${key}"]`) || document.getElementById(key);
+      if (field && value) {
+        field.value = value;
+      }
+    });
+  } catch (error) {
+    console.warn('Could not restore signup draft.', error);
   }
 }
 
@@ -201,73 +348,159 @@ function goToBoilerStep() {
 }
 
 function goToPlanStep() {
-  const broken = document.getElementById('broken').value;
-  const under3 = document.getElementById('under3').value;
-  const warranty = document.getElementById('warranty').value;
+  if (!isFixAndJoin) {
+    const broken = document.getElementById('broken').value;
+    const under3 = document.getElementById('under3').value;
+    const warranty = document.getElementById('warranty').value;
 
-  if (!broken) {
-    alert('Please choose whether the boiler is broken.');
-    return;
+    if (!broken) {
+      alert('Please choose whether the boiler is currently broken.');
+      return;
+    }
+
+    if (broken === 'Yes') {
+      storeDraft('fix_and_join');
+      window.location.href = fixAndJoinUrl;
+      return;
+    }
+
+    if (!under3 || !warranty) {
+      alert('Please answer the age and warranty questions.');
+      return;
+    }
   }
 
-  if (broken === 'No' && (!under3 || !warranty)) {
-    alert('Please answer the age and warranty questions.');
-    return;
-  }
-
-  updateFlow();
+  renderPlanCards();
   nextStep(4);
 }
 
 function goToAgreementStep() {
-  const plan = document.getElementById('plan').value;
-  if (!plan) {
+  const selectedPlan = document.getElementById('selectedPlanInput').value;
+  if (!selectedPlan) {
     alert('Please select a plan.');
     return;
   }
+
   nextStep(5);
 }
 
-function updateFlow() {
-  const broken = document.getElementById('broken').value;
-  const under3 = document.getElementById('under3').value;
-  const warranty = document.getElementById('warranty').value;
+function setSelectedPlan(planKey, available) {
+  if (!available) return;
 
-  const plan = document.getElementById('plan');
-  const fixBox = document.getElementById('fixJoinBox');
-  const extraQuestions = document.getElementById('extraQuestions');
+  document.getElementById('selectedPlanInput').value = planKey;
+  document.querySelectorAll('.plan-select-card').forEach(card => {
+    card.classList.toggle('selected', card.dataset.plan === planKey);
+  });
+}
 
-  plan.innerHTML = '<option value="">Choose a plan *</option>';
+function renderPlanCards() {
+  const broken = isFixAndJoin ? 'Yes' : document.getElementById('broken').value;
+  const under3 = document.getElementById('under3')?.value || '';
+  const warranty = document.getElementById('warranty')?.value || '';
+  const messageBox = document.getElementById('eligibilityMessage');
+  const fixJoinBox = document.getElementById('fixJoinBox');
+  const brokenRouteMessage = document.getElementById('brokenRouteMessage');
+  const selectedInput = document.getElementById('selectedPlanInput');
+  const cardsWrap = document.getElementById('planCards');
+
+  if (brokenRouteMessage) {
+    brokenRouteMessage.style.display = broken === 'Yes' ? 'block' : 'none';
+  }
+
+  let configs = [];
+  let message = '';
 
   if (broken === 'Yes') {
-    plan.innerHTML += `
-      <option value="Standard">Standard</option>
-      <option value="Complete">Complete</option>
+    message = 'Fix & Join customers can choose Standard or Complete after the initial inspection and diagnosis.';
+    configs = planDefinitions
+      .filter(plan => plan.key !== 'Essential')
+      .map(plan => ({ ...plan, available: true, badge: '' }));
+    fixJoinBox.style.display = 'block';
+  } else if (under3 === 'Yes' || warranty === 'Yes') {
+    message = 'Based on your answers, you may be eligible for the Essential Plan. You can still choose Standard or Complete if you’d prefer a higher level of cover.';
+    configs = planDefinitions.map(plan => ({
+      ...plan,
+      available: true,
+      badge: plan.key === 'Essential' ? 'Recommended' : ''
+    }));
+    fixJoinBox.style.display = 'none';
+  } else if (under3 === 'No' && warranty === 'No') {
+    message = 'Because your boiler is over 3 years old or outside manufacturer warranty, the Essential Plan isn’t available. You can still choose Standard or Complete.';
+    configs = planDefinitions.map(plan => ({
+      ...plan,
+      available: plan.key !== 'Essential',
+      badge: plan.key === 'Essential' ? 'Not available' : '',
+      disabledReason: plan.key === 'Essential'
+        ? 'Essential is only available for boilers under 3 years old or still under manufacturer warranty.'
+        : ''
+    }));
+    fixJoinBox.style.display = 'none';
+  } else {
+    message = '';
+    configs = planDefinitions.map(plan => ({ ...plan, available: true, badge: '' }));
+    fixJoinBox.style.display = broken === 'Yes' ? 'block' : 'none';
+  }
+
+  if (message) {
+    messageBox.innerHTML = message;
+    messageBox.style.display = 'block';
+  } else {
+    messageBox.style.display = 'none';
+  }
+
+  cardsWrap.innerHTML = configs.map(plan => {
+    const disabledClass = plan.available ? '' : ' disabled';
+    const selectedClass = selectedInput.value === plan.key ? ' selected' : '';
+    return `
+      <button
+        type="button"
+        class="plan-select-card${disabledClass}${selectedClass}"
+        data-plan="${plan.key}"
+        ${plan.available ? `onclick="setSelectedPlan('${plan.key}', true)"` : 'disabled'}
+      >
+        <div class="plan-select-top">
+          <div>
+            <h3>${plan.title}</h3>
+            <p class="price">${plan.price}</p>
+          </div>
+          ${plan.badge ? `<span class="plan-badge">${plan.badge}</span>` : ''}
+        </div>
+        <p class="plan-select-copy">${plan.description}</p>
+        <ul>
+          ${plan.bullets.map(item => `<li>${item}</li>`).join('')}
+        </ul>
+        ${plan.disabledReason ? `<p class="plan-disabled-note">${plan.disabledReason}</p>` : ''}
+      </button>
     `;
-    fixBox.style.display = 'block';
-    extraQuestions.style.display = 'none';
-    document.getElementById('under3').value = '';
-    document.getElementById('warranty').value = '';
+  }).join('');
+
+  const availablePlans = configs.filter(plan => plan.available).map(plan => plan.key);
+  if (!availablePlans.includes(selectedInput.value)) {
+    selectedInput.value = '';
+  }
+}
+
+function updateFlow() {
+  if (isFixAndJoin) {
+    renderPlanCards();
     return;
   }
 
-  extraQuestions.style.display = 'grid';
-  fixBox.style.display = 'none';
+  const broken = document.getElementById('broken').value;
+  const extraQuestions = document.getElementById('extraQuestions');
+  const brokenRouteMessage = document.getElementById('brokenRouteMessage');
 
-  if (broken === 'No') {
-    if (under3 === 'Yes' || warranty === 'Yes') {
-      plan.innerHTML += `
-        <option value="Essential">Essential</option>
-        <option value="Standard">Standard</option>
-        <option value="Complete">Complete</option>
-      `;
-    } else if (under3 === 'No' && warranty === 'No') {
-      plan.innerHTML += `
-        <option value="Standard">Standard</option>
-        <option value="Complete">Complete</option>
-      `;
-    }
+  if (broken === 'Yes') {
+    extraQuestions.style.display = 'none';
+    brokenRouteMessage.style.display = 'block';
+    document.getElementById('under3').value = '';
+    document.getElementById('warranty').value = '';
+  } else {
+    extraQuestions.style.display = 'grid';
+    brokenRouteMessage.style.display = 'none';
   }
+
+  renderPlanCards();
 }
 
 let lookupRunning = false;
@@ -315,9 +548,6 @@ function lookupPostcode() {
     });
 }
 
-// -------------------------
-// Signature pad
-// -------------------------
 const canvas = document.getElementById('signaturePad');
 const ctx = canvas.getContext('2d');
 const signatureInput = document.getElementById('signatureData');
@@ -432,15 +662,21 @@ window.addEventListener('resize', () => {
 
 document.getElementById('signupForm').addEventListener('submit', function(e) {
   saveSignature();
+  storeDraft(isFixAndJoin ? 'fix_and_join' : 'signup');
 
   if (!signatureInput.value) {
     e.preventDefault();
     alert('Please provide your drawn signature.');
     nextStep(5);
+    return;
   }
+
+  sessionStorage.removeItem(draftStorageKey);
 });
 
+restoreDraft();
 updateFlow();
+
 setTimeout(() => {
   if (document.getElementById('step5').classList.contains('active')) {
     resizeCanvas();

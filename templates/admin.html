@@ -5,29 +5,39 @@
 {% block content %}
 <section class="page-header">
   <h1>Admin Dashboard</h1>
-  <p>Manage signups, payments, documents, and service reminders.</p>
+  <p>Manage service plan signups, one-off annual services, payments, documents and reminders.</p>
 </section>
 
 <div class="admin-top-bar">
-  <div class="stats-grid">
+  <div class="stats-grid stats-grid-wide">
     <div class="stat-card">
-      <span class="stat-label">Total signups</span>
+      <span class="stat-label">Service plan signups</span>
       <strong class="stat-value">{{ stats.total }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">Paid</span>
+      <span class="stat-label">Paid plans</span>
       <strong class="stat-value">{{ stats.paid }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">Conversion</span>
+      <span class="stat-label">Plan conversion</span>
       <strong class="stat-value">{{ stats.conversion }}%</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">One-off bookings</span>
+      <strong class="stat-value">{{ stats.one_off_total }}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">Paid one-offs</span>
+      <strong class="stat-value">{{ stats.one_off_paid }}</strong>
     </div>
   </div>
 
   <div class="admin-actions">
-    <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export CSV</a>
+    <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export plan signups CSV</a>
 
     <form method="POST" action="{{ url_for('run_reminders') }}" style="display:inline;">
       <button type="submit" class="btn btn-primary">Run reminders</button>
@@ -41,205 +51,348 @@
   </div>
 </div>
 
-<div class="card table-card">
-  {% if signups %}
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Created</th>
-            <th>Customer</th>
-            <th>Contact</th>
-            <th>Address</th>
-            <th>Plan</th>
-            <th>Boiler</th>
-            <th>Consent</th>
-            <th>Emails</th>
-            <th>Reminder</th>
-            <th>Payment</th>
-            <th>PDF</th>
-            <th>Map</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {% for s in signups %}
-            <tr>
-              <td>#{{ s.id }}</td>
-
-              <td>
-                <div>{{ s.created_at or "-" }}</div>
-                {% if s.updated_at %}
-                  <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ s.updated_at }}</div>
-                {% endif %}
-              </td>
-
-              <td>
-                <strong>{{ s.full_name or "-" }}</strong>
-              </td>
-
-              <td>
-                <div>{{ s.email or "-" }}</div>
-                <div>{{ s.phone or "-" }}</div>
-              </td>
-
-              <td>
-                <div>{{ s.address_line_1 or "" }}</div>
-                {% if s.address_line_2 %}
-                  <div>{{ s.address_line_2 }}</div>
-                {% endif %}
-                <div>{{ s.city or "" }}</div>
-                <div>{{ s.postcode or "" }}</div>
-              </td>
-
-              <td>
-                <div><strong>{{ s.selected_plan or "-" }}</strong></div>
-                <div>£{{ s.monthly_price or "-" }}/month</div>
-
-                {% if s.fix_and_join == "Yes" %}
-                  <div class="fix-join-admin">
-                    Fix &amp; Join: Yes<br>
-                    Fee: £{{ s.fix_and_join_fee or fix_and_join_fee }}
-                  </div>
-                {% else %}
-                  <div>Fix &amp; Join: No</div>
-                {% endif %}
-              </td>
-
-              <td>
-                <div>Broken: {{ s.boiler_broken or "-" }}</div>
-                <div>Under 3 years: {{ s.boiler_under_3_years or "-" }}</div>
-                <div>Warranty: {{ s.boiler_warranty_valid or "-" }}</div>
-              </td>
-
-              <td>
-                <div>Signature name: {{ s.signature_name or "-" }}</div>
-                <div>Drawn signature: {% if s.signature_data %}Yes{% else %}No{% endif %}</div>
-                <div>Terms: {% if s.accepted_terms %}Yes{% else %}No{% endif %}</div>
-                <div>Privacy: {% if s.accepted_privacy %}Yes{% else %}No{% endif %}</div>
-                <div>Fair usage: {% if s.accepted_fair_usage %}Yes{% else %}No{% endif %}</div>
-              </td>
-
-              <td>
-                <div>
-                  Customer email:
-                  {% if s.customer_email_sent %}
-                    <span class="status-pill paid">Sent</span>
-                  {% else %}
-                    <span class="status-pill pending">No</span>
-                  {% endif %}
-                </div>
-
-                <div style="margin-top:8px;">
-                  Admin alert:
-                  {% if s.admin_email_sent %}
-                    <span class="status-pill paid">Sent</span>
-                  {% else %}
-                    <span class="status-pill pending">No</span>
-                  {% endif %}
-                </div>
-              </td>
-
-              <td>
-                <div><strong>Due:</strong> {{ s.reminder_due_date or "-" }}</div>
-
-                <div style="margin-top:8px;">
-                  {% if s.reminder_sent %}
-                    <span class="status-pill paid">Reminder sent</span>
-                  {% else %}
-                    <span class="status-pill pending">Not sent</span>
-                  {% endif %}
-                </div>
-
-                {% if s.reminder_sent_at %}
-                  <div style="margin-top:8px;">
-                    <strong>Sent at:</strong><br>
-                    {{ s.reminder_sent_at }}
-                  </div>
-                {% endif %}
-              </td>
-
-              <td>
-                {% if s.payment_status == "Paid" %}
-                  <span class="status-pill paid">Paid</span>
-                {% elif s.payment_status == "Link sent" %}
-                  <span class="status-pill sent">Link sent</span>
-                {% elif s.payment_status == "Failed" %}
-                  <span class="status-pill failed">Failed</span>
-                {% else %}
-                  <span class="status-pill pending">{{ s.payment_status or "Not sent" }}</span>
-                {% endif %}
-
-                {% if s.payment_completed_at %}
-                  <div style="margin-top:8px;">
-                    <strong>Paid at:</strong><br>
-                    {{ s.payment_completed_at }}
-                  </div>
-                {% endif %}
-
-                {% if s.stripe_checkout_url %}
-                  <div class="small-link-wrap">
-                    <a href="{{ s.stripe_checkout_url }}" target="_blank" rel="noopener noreferrer">Open payment link</a>
-                  </div>
-                {% endif %}
-              </td>
-
-              <td>
-                <div>
-                  Stored:
-                  {% if s.contract_pdf %}
-                    <span class="status-pill paid">Yes</span>
-                  {% else %}
-                    <span class="status-pill pending">No</span>
-                  {% endif %}
-                </div>
-
-                <div style="margin-top:8px;">
-                  <a href="{{ url_for('admin_contract', signup_id=s.id) }}" target="_blank" rel="noopener noreferrer">
-                    View PDF
-                  </a>
-                </div>
-
-                {% if s.contract_pdf_generated_at %}
-                  <div style="margin-top:8px;">
-                    <strong>Generated:</strong><br>
-                    {{ s.contract_pdf_generated_at }}
-                  </div>
-                {% endif %}
-              </td>
-
-              <td>
-                <div>
-                  <a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a>
-                </div>
-                <div style="margin-top:8px;">
-                  <a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a>
-                </div>
-              </td>
-
-              <td>
-                <div style="display:flex; flex-direction:column; gap:10px;">
-                  <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
-                    <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
-                  </form>
-
-                  <a href="{{ url_for('admin_contract', signup_id=s.id) }}"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     class="btn btn-secondary btn-small">
-                    View PDF
-                  </a>
-                </div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+<section class="admin-section">
+  <div class="section-header-row">
+    <div>
+      <h2>One-Off Annual Services</h2>
+      <p class="section-copy">Paid online annual service requests, kept separate from monthly plans and Fix &amp; Join.</p>
     </div>
-  {% else %}
-    <p>No signups yet.</p>
-  {% endif %}
-</div>
+  </div>
+
+  <div class="card table-card">
+    {% if one_off_bookings %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Created</th>
+              <th>Type</th>
+              <th>Customer</th>
+              <th>Contact</th>
+              <th>Address</th>
+              <th>Boiler</th>
+              <th>Preferences</th>
+              <th>Payment</th>
+              <th>Booking</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for booking in one_off_bookings %}
+              <tr>
+                <td>#{{ booking.id }}</td>
+                <td>
+                  <div>{{ booking.created_at or "-" }}</div>
+                  {% if booking.updated_at %}
+                    <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ booking.updated_at }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="record-chip one-off">One-Off Annual Service</span>
+                </td>
+                <td>
+                  <strong>{{ booking.full_name or "-" }}</strong>
+                </td>
+                <td>
+                  <div>{{ booking.email or "-" }}</div>
+                  <div>{{ booking.phone or "-" }}</div>
+                </td>
+                <td>
+                  <div>{{ booking.address_line_1 or "" }}</div>
+                  {% if booking.address_line_2 %}
+                    <div>{{ booking.address_line_2 }}</div>
+                  {% endif %}
+                  <div>{{ booking.town or "" }}</div>
+                  {% if booking.county %}
+                    <div>{{ booking.county }}</div>
+                  {% endif %}
+                  <div>{{ booking.postcode or "" }}</div>
+                </td>
+                <td>
+                  <div>Make: {{ booking.boiler_make or "-" }}</div>
+                  <div>Model: {{ booking.boiler_model or "-" }}</div>
+                </td>
+                <td>
+                  <div><strong>Preferred:</strong> {{ booking.preferred_dates or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Notes:</strong> {{ booking.customer_notes or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Access:</strong> {{ booking.access_notes or "-" }}</div>
+                </td>
+                <td>
+                  {% if booking.payment_status == "Paid" %}
+                    <span class="status-pill paid">Paid</span>
+                  {% elif booking.payment_status == "Failed" %}
+                    <span class="status-pill failed">Failed</span>
+                  {% elif booking.payment_status == "Cancelled" %}
+                    <span class="status-pill failed">Cancelled</span>
+                  {% else %}
+                    <span class="status-pill pending">{{ booking.payment_status or "Pending" }}</span>
+                  {% endif %}
+
+                  <div style="margin-top:8px;"><strong>Amount:</strong> £{{ booking.amount_paid or one_off_service_price }}</div>
+                  <div style="margin-top:8px;"><strong>Session:</strong> {{ booking.stripe_session_id or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Payment ref:</strong> {{ booking.stripe_payment_intent_id or "-" }}</div>
+                </td>
+                <td>
+                  <div><strong>Status:</strong> {{ booking.status or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Appointment:</strong> {{ booking.appointment_status or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Engineer:</strong> {{ booking.assigned_engineer or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Date:</strong> {{ booking.appointment_date or "-" }}</div>
+                  <div style="margin-top:8px;"><strong>Time:</strong> {{ booking.appointment_time or "-" }}</div>
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('update_annual_service_booking', booking_id=booking.id) }}" class="admin-inline-form">
+                    <label>
+                      Status
+                      <select name="status">
+                        {% for option in one_off_statuses %}
+                          <option value="{{ option }}" {% if booking.status == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+
+                    <label>
+                      Appointment
+                      <select name="appointment_status">
+                        {% for option in appointment_statuses %}
+                          <option value="{{ option }}" {% if booking.appointment_status == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+
+                    <label>
+                      Engineer
+                      <input type="text" name="assigned_engineer" value="{{ booking.assigned_engineer or '' }}">
+                    </label>
+
+                    <label>
+                      Date
+                      <input type="date" name="appointment_date" value="{{ booking.appointment_date or '' }}">
+                    </label>
+
+                    <label>
+                      Time
+                      <input type="text" name="appointment_time" value="{{ booking.appointment_time or '' }}" placeholder="AM / PM / 10:30">
+                    </label>
+
+                    <button type="submit" class="btn btn-primary btn-small">Save</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>No one-off annual service bookings yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="admin-section">
+  <div class="section-header-row">
+    <div>
+      <h2>Service Plan Signups</h2>
+      <p class="section-copy">Monthly cover applications, including Fix &amp; Join where the boiler was broken at signup.</p>
+    </div>
+  </div>
+
+  <div class="card table-card">
+    {% if signups %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Created</th>
+              <th>Customer</th>
+              <th>Contact</th>
+              <th>Address</th>
+              <th>Plan</th>
+              <th>Boiler</th>
+              <th>Consent</th>
+              <th>Emails</th>
+              <th>Reminder</th>
+              <th>Payment</th>
+              <th>PDF</th>
+              <th>Map</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for s in signups %}
+              <tr>
+                <td>#{{ s.id }}</td>
+                <td>
+                  <div>{{ s.created_at or "-" }}</div>
+                  {% if s.updated_at %}
+                    <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ s.updated_at }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <strong>{{ s.full_name or "-" }}</strong>
+                  <div style="margin-top:8px;">
+                    <span class="record-chip service-plan">Service Plan</span>
+                    {% if s.fix_and_join == "Yes" %}
+                      <span class="record-chip fix-join">Fix &amp; Join</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div>{{ s.email or "-" }}</div>
+                  <div>{{ s.phone or "-" }}</div>
+                </td>
+                <td>
+                  <div>{{ s.address_line_1 or "" }}</div>
+                  {% if s.address_line_2 %}
+                    <div>{{ s.address_line_2 }}</div>
+                  {% endif %}
+                  <div>{{ s.city or "" }}</div>
+                  <div>{{ s.postcode or "" }}</div>
+                </td>
+                <td>
+                  <div><strong>{{ s.selected_plan or "-" }}</strong></div>
+                  <div>£{{ s.monthly_price or "-" }}/month</div>
+                  <div style="margin-top:8px;">Status: {{ s.status or "-" }}</div>
+
+                  {% if s.fix_and_join == "Yes" %}
+                    <div class="fix-join-admin">
+                      Fix &amp; Join applies<br>
+                      Fee: £{{ s.fix_and_join_fee or fix_and_join_fee }}
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div>Broken: {{ s.boiler_broken or "-" }}</div>
+                  <div>Under 3 years: {{ s.boiler_under_3_years or "-" }}</div>
+                  <div>Warranty: {{ s.boiler_warranty_valid or "-" }}</div>
+                  {% if s.boiler_make or s.boiler_model %}
+                    <div style="margin-top:8px;">{{ s.boiler_make or "-" }}{% if s.boiler_model %} / {{ s.boiler_model }}{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div>Signature name: {{ s.signature_name or "-" }}</div>
+                  <div>Drawn signature: {% if s.signature_data %}Yes{% else %}No{% endif %}</div>
+                  <div>Terms: {% if s.accepted_terms %}Yes{% else %}No{% endif %}</div>
+                  <div>Privacy: {% if s.accepted_privacy %}Yes{% else %}No{% endif %}</div>
+                  <div>Fair usage: {% if s.accepted_fair_usage %}Yes{% else %}No{% endif %}</div>
+                </td>
+                <td>
+                  <div>
+                    Customer email:
+                    {% if s.customer_email_sent %}
+                      <span class="status-pill paid">Sent</span>
+                    {% else %}
+                      <span class="status-pill pending">No</span>
+                    {% endif %}
+                  </div>
+
+                  <div style="margin-top:8px;">
+                    Admin alert:
+                    {% if s.admin_email_sent %}
+                      <span class="status-pill paid">Sent</span>
+                    {% else %}
+                      <span class="status-pill pending">No</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div><strong>Due:</strong> {{ s.reminder_due_date or "-" }}</div>
+
+                  <div style="margin-top:8px;">
+                    {% if s.reminder_sent %}
+                      <span class="status-pill paid">Reminder sent</span>
+                    {% else %}
+                      <span class="status-pill pending">Not sent</span>
+                    {% endif %}
+                  </div>
+
+                  {% if s.reminder_sent_at %}
+                    <div style="margin-top:8px;">
+                      <strong>Sent at:</strong><br>
+                      {{ s.reminder_sent_at }}
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if s.payment_status == "Paid" %}
+                    <span class="status-pill paid">Paid</span>
+                  {% elif s.payment_status == "Link sent" %}
+                    <span class="status-pill sent">Link sent</span>
+                  {% elif s.payment_status == "Failed" %}
+                    <span class="status-pill failed">Failed</span>
+                  {% else %}
+                    <span class="status-pill pending">{{ s.payment_status or "Not sent" }}</span>
+                  {% endif %}
+
+                  {% if s.payment_completed_at %}
+                    <div style="margin-top:8px;">
+                      <strong>Paid at:</strong><br>
+                      {{ s.payment_completed_at }}
+                    </div>
+                  {% endif %}
+
+                  {% if s.stripe_checkout_url %}
+                    <div class="small-link-wrap">
+                      <a href="{{ s.stripe_checkout_url }}" target="_blank" rel="noopener noreferrer">Open payment link</a>
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div>
+                    Stored:
+                    {% if s.contract_pdf %}
+                      <span class="status-pill paid">Yes</span>
+                    {% else %}
+                      <span class="status-pill pending">No</span>
+                    {% endif %}
+                  </div>
+
+                  <div style="margin-top:8px;">
+                    <a href="{{ url_for('admin_contract', signup_id=s.id) }}" target="_blank" rel="noopener noreferrer">
+                      View PDF
+                    </a>
+                  </div>
+
+                  {% if s.contract_pdf_generated_at %}
+                    <div style="margin-top:8px;">
+                      <strong>Generated:</strong><br>
+                      {{ s.contract_pdf_generated_at }}
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div>
+                    <a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a>
+                  </div>
+                  <div style="margin-top:8px;">
+                    <a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a>
+                  </div>
+                </td>
+                <td>
+                  <div style="display:flex; flex-direction:column; gap:10px;">
+                    <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
+                      <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
+                    </form>
+
+                    <a href="{{ url_for('admin_contract', signup_id=s.id) }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="btn btn-secondary btn-small">
+                      View PDF
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>No service plan signups yet.</p>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

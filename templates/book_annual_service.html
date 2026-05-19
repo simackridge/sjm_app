@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Book Annual Service{% endblock %}
+
+{% block content %}
+<section class="page-header">
+  <h1>Book Your Annual Service Online</h1>
+  <p>One-off annual boiler service for £{{ one_off_service_price }}. Once payment is complete, we’ll contact you to confirm your service appointment.</p>
+</section>
+
+<div class="annual-service-layout">
+  <div class="card annual-service-info">
+    <span class="record-chip one-off">One-Off Annual Boiler Service</span>
+    <h2>£{{ one_off_service_price }} one-off payment</h2>
+    <p>
+      Ideal if you just need your yearly boiler service and don’t want a monthly plan.
+    </p>
+    <p class="muted-copy">
+      Not ready for a monthly service plan? Book your annual boiler service as a one-off appointment.
+    </p>
+    <a href="{{ url_for('signup') }}" class="btn btn-secondary">Looking for monthly cover?</a>
+  </div>
+
+  <div class="card annual-service-form-card">
+    <form method="POST" action="{{ url_for('submit_annual_service') }}" id="annualServiceForm">
+      <input type="text" name="contact_reference" style="display:none">
+
+      <div class="annual-service-grid">
+        <div class="field">
+          <label for="first_name">First name *</label>
+          <input id="first_name" name="first_name" required>
+        </div>
+
+        <div class="field">
+          <label for="last_name">Last name *</label>
+          <input id="last_name" name="last_name" required>
+        </div>
+
+        <div class="field">
+          <label for="email">Email *</label>
+          <input id="email" name="email" type="email" required>
+        </div>
+
+        <div class="field">
+          <label for="phone">Phone *</label>
+          <input id="phone" name="phone" required>
+        </div>
+
+        <div class="field field-span-2">
+          <label for="postcode">Postcode *</label>
+          <div class="inline-row">
+            <input id="postcode" name="postcode" required>
+            <button type="button" class="btn btn-secondary lookup-btn" id="annualLookupBtn" onclick="lookupAnnualPostcode()">Lookup</button>
+          </div>
+        </div>
+
+        <div id="annualLookupMessage" class="note-box field-span-2" style="display:none;"></div>
+
+        <div class="field field-span-2">
+          <label for="address_line_1">Address line 1 *</label>
+          <input id="address_line_1" name="address_line_1" required>
+        </div>
+
+        <div class="field field-span-2">
+          <label for="address_line_2">Address line 2</label>
+          <input id="address_line_2" name="address_line_2">
+        </div>
+
+        <div class="field">
+          <label for="town">Town / City *</label>
+          <input id="town" name="town" required>
+        </div>
+
+        <div class="field">
+          <label for="county">County</label>
+          <input id="county" name="county">
+        </div>
+
+        <div class="field">
+          <label for="boiler_make">Boiler make</label>
+          <input id="boiler_make" name="boiler_make" placeholder="If known">
+        </div>
+
+        <div class="field">
+          <label for="boiler_model">Boiler model</label>
+          <input id="boiler_model" name="boiler_model" placeholder="If known">
+        </div>
+
+        <div class="field field-span-2">
+          <label for="preferred_dates">Preferred dates / times</label>
+          <textarea id="preferred_dates" name="preferred_dates" rows="4" placeholder="Let us know any preferred dates or times."></textarea>
+        </div>
+
+        <div class="field field-span-2">
+          <label for="customer_notes">Notes</label>
+          <textarea id="customer_notes" name="customer_notes" rows="4" placeholder="Anything else we should know about the job?"></textarea>
+        </div>
+
+        <div class="field field-span-2">
+          <label for="access_notes">Access notes</label>
+          <textarea id="access_notes" name="access_notes" rows="3" placeholder="Parking, access, gate code, someone at home, and so on."></textarea>
+        </div>
+      </div>
+
+      <div class="checkboxes compact-checkboxes">
+        <label>
+          <input type="checkbox" name="acknowledged_contact" required>
+          I understand that once payment is complete, SJM Heating will contact me to confirm the appointment.
+        </label>
+      </div>
+
+      <div class="step-actions">
+        <button type="submit" class="btn btn-primary">Continue to payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let annualLookupRunning = false;
+
+function lookupAnnualPostcode() {
+  if (annualLookupRunning) return;
+
+  const postcode = document.getElementById('postcode').value.trim();
+  const button = document.getElementById('annualLookupBtn');
+  const message = document.getElementById('annualLookupMessage');
+
+  if (!postcode) {
+    alert('Please enter a postcode first.');
+    return;
+  }
+
+  annualLookupRunning = true;
+  button.disabled = true;
+  button.innerText = 'Looking up...';
+  message.style.display = 'none';
+
+  fetch('/api/postcode-lookup?postcode=' + encodeURIComponent(postcode))
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        message.style.display = 'block';
+        message.innerHTML = 'Postcode lookup failed. Please enter the address manually.';
+        return;
+      }
+
+      document.getElementById('postcode').value = data.postcode || postcode.toUpperCase();
+      document.getElementById('town').value = data.city || '';
+      document.getElementById('county').value = data.region || '';
+
+      message.style.display = 'block';
+      message.innerHTML = 'Postcode found. Please enter the house number and street manually.';
+    })
+    .catch(() => {
+      message.style.display = 'block';
+      message.innerHTML = 'Lookup failed. Please enter the address manually.';
+    })
+    .finally(() => {
+      annualLookupRunning = false;
+      button.disabled = false;
+      button.innerText = 'Lookup';
+    });
+}
+</script>
+{% endblock %}
