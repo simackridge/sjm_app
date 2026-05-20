@@ -17,8 +17,9 @@ import io
 import base64
 import tempfile
 import logging
+import re
 from functools import wraps
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from dotenv import load_dotenv
 import stripe
@@ -105,6 +106,60 @@ ONE_OFF_SERVICE_BOOKING_TYPE = "one_off_annual_service"
 ONE_OFF_BOOKING_STATUSES = ["New", "Contacted", "Booked", "Completed", "Cancelled"]
 ONE_OFF_APPOINTMENT_STATUSES = ["To arrange", "Date offered", "Confirmed", "Completed"]
 DEFAULT_ASSIGNED_ENGINEER = "Sean"
+ADMIN_VIEW_STATES = {
+    "active": "Active Customers",
+    "archived": "Archived Customers",
+    "deleted": "Deleted Customers",
+    "all": "All Customers",
+}
+ADMIN_RECORD_TYPE_SIGNUP = "signup"
+ADMIN_RECORD_TYPE_ONE_OFF = "one_off"
+ADMIN_RECORD_TYPE_TABLES = {
+    ADMIN_RECORD_TYPE_SIGNUP: "signups",
+    ADMIN_RECORD_TYPE_ONE_OFF: "one_off_service_bookings",
+}
+ADMIN_DEFAULT_STATUS_OPTIONS = [
+    "New",
+    "Contacted",
+    "Quoted",
+    "Won",
+    "Lost",
+    "Booked",
+    "Completed",
+    "Cancelled",
+    "Archived",
+    "Deleted",
+]
+ADMIN_DEFAULT_PAYMENT_OPTIONS = [
+    "Not sent",
+    "Pending",
+    "Checkout created",
+    "Link sent",
+    "Paid",
+    "Failed",
+    "Cancelled",
+    "Refunded",
+]
+ADMIN_PRODUCT_OPTIONS = [
+    ("Essential", "Essential"),
+    ("Standard", "Standard"),
+    ("Complete", "Complete"),
+    ("Fix & Join", "Fix & Join"),
+    ("One-Off Annual Service", "One-Off Annual Service"),
+    ("__blank__", "Unknown / blank"),
+]
+ADMIN_BOOKING_TYPE_OPTIONS = [
+    ("monthly_service_plan", "Monthly Service Plan"),
+    ("fix_and_join", "Fix & Join"),
+    (ONE_OFF_SERVICE_BOOKING_TYPE, "One-Off Annual Service"),
+    ("__other__", "Other / Unknown"),
+]
+ADMIN_PENDING_PAYMENT_STATUSES = {
+    "Not sent",
+    "Pending",
+    "Checkout created",
+    "Link sent",
+}
 TERMS_VERSION = os.environ.get("TERMS_VERSION", "v1.0")
 PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
@@ -324,6 +379,521 @@ def build_maps_link(row):
 def build_directions_link(row):
     address = build_full_address(row)
     return f"https://www.google.com/maps/dir/?api=1&destination={quote_plus(address)}"
+
+
+def normalize_phone_search(value):
+    return re.sub(r"\s+", "", clean(value))
+
+
+def normalize_admin_state(value):
+    state = clean(value).lower() or "active"
+    return state if state in ADMIN_VIEW_STATES else "active"
+
+
+def normalize_admin_date(value):
+    value = clean(value)
+    if not value:
+        return ""
+
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return ""
+
+    return value
+
+
+def parse_admin_filters(args):
+    filters = {
+        "state": normalize_admin_state(args.get("state")),
+        "status": clean(args.get("status")),
+        "plan": clean(args.get("plan")),
+        "payment_status": clean(args.get("payment_status")),
+        "booking_type": clean(args.get("booking_type")),
+        "created_from": normalize_admin_date(args.get("created_from")),
+        "created_to": normalize_admin_date(args.get("created_to")),
+        "search": clean(args.get("search")),
+    }
+    filters["search_phone"] = normalize_phone_search(filters["search"])
+    return filters
+
+
+def get_row_bool(row, *keys):
+    return boolish_to_bool(value_or_first(row, *keys))
+
+
+def get_record_state(row):
+    if get_row_bool(row, "is_deleted"):
+        return "deleted"
+    if get_row_bool(row, "is_archived"):
+        return "archived"
+    return "active"
+
+
+def get_signup_booking_type_slug(signup):
+    return "fix_and_join" if clean(value_or_first(signup, "fix_and_join")) == "Yes" else "monthly_service_plan"
+
+
+def get_signup_booking_type_label(signup):
+    return "Fix & Join" if get_signup_booking_type_slug(signup) == "fix_and_join" else "Monthly Service Plan"
+
+
+def get_signup_product_label(signup):
+    if clean(value_or_first(signup, "fix_and_join")) == "Yes":
+        return "Fix & Join"
+    return clean(value_or_first(signup, "selected_plan")) or "Unknown"
+
+
+def normalize_admin_signup_record(signup):
+    row = normalize_signup_record(signup)
+    row["record_type"] = ADMIN_RECORD_TYPE_SIGNUP
+    row["record_type_label"] = "Service Plan Signup"
+    row["record_state"] = get_record_state(row)
+    row["is_archived"] = get_row_bool(row, "is_archived")
+    row["is_deleted"] = get_row_bool(row, "is_deleted")
+    row["booking_type_slug"] = get_signup_booking_type_slug(row)
+    row["booking_type_label"] = get_signup_booking_type_label(row)
+    row["product_label"] = get_signup_product_label(row)
+    row["full_address"] = build_full_address(row)
+    row["stripe_reference"] = value_or_first(
+        row,
+        "stripe_checkout_session_id",
+        "stripe_subscription_id",
+        "stripe_customer_id",
+    )
+    return row
+
+
+def normalize_admin_signup_rows(rows):
+    return [normalize_admin_signup_record(row) for row in rows or []]
+
+
+def normalize_admin_one_off_record(booking):
+    row = normalize_one_off_booking(booking)
+    row["city"] = value_or_first(row, "city", "town")
+    row["record_type"] = ADMIN_RECORD_TYPE_ONE_OFF
+    row["record_type_label"] = "One-Off Annual Service"
+    row["record_state"] = get_record_state(row)
+    row["is_archived"] = get_row_bool(row, "is_archived")
+    row["is_deleted"] = get_row_bool(row, "is_deleted")
+    row["booking_type_slug"] = value_or_first(row, "booking_type") or ONE_OFF_SERVICE_BOOKING_TYPE
+    row["booking_type_label"] = "One-Off Annual Service"
+    row["product_label"] = "One-Off Annual Service"
+    row["full_address"] = build_full_address(row)
+    row["stripe_reference"] = value_or_first(
+        row,
+        "stripe_payment_intent_id",
+        "stripe_session_id",
+    )
+    return row
+
+
+def normalize_admin_one_off_rows(rows):
+    return [normalize_admin_one_off_record(row) for row in rows or []]
+
+
+def build_admin_url(endpoint, current_args=None, **updates):
+    query_args = {}
+
+    if current_args:
+        query_args.update({key: value for key, value in current_args.items() if clean(value)})
+
+    for key, value in updates.items():
+        if value is None:
+            query_args.pop(key, None)
+        else:
+            value = str(value)
+            if clean(value):
+                query_args[key] = value
+            else:
+                query_args.pop(key, None)
+
+    query_string = urlencode(query_args)
+    base_url = url_for(endpoint)
+    return f"{base_url}?{query_string}" if query_string else base_url
+
+
+def redirect_to_admin(return_query=""):
+    return_query = clean(return_query or request.form.get("return_query"))
+    admin_url = url_for("admin")
+    if return_query:
+        return redirect(f"{admin_url}?{return_query}")
+    return redirect(admin_url)
+
+
+def get_admin_actor():
+    return "admin"
+
+
+def get_admin_table_name(record_type):
+    return ADMIN_RECORD_TYPE_TABLES.get(record_type)
+
+
+def log_admin_action(customer_id, record_type, action, details=""):
+    table_name = get_admin_table_name(record_type)
+    if not table_name:
+        return
+
+    try:
+        db_execute(
+            """
+            INSERT INTO admin_action_log (
+                customer_id,
+                customer_table,
+                action,
+                action_by,
+                action_timestamp,
+                details
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                customer_id,
+                table_name,
+                action,
+                get_admin_actor(),
+                datetime.now(UTC),
+                details or None,
+            ),
+            commit=True,
+        )
+    except Exception:
+        logger.exception("Failed to write admin action log for %s %s", record_type, customer_id)
+
+
+def build_admin_state_clause(state):
+    if state == "archived":
+        return "COALESCE(is_archived, FALSE) = TRUE AND COALESCE(is_deleted, FALSE) = FALSE"
+    if state == "deleted":
+        return "COALESCE(is_deleted, FALSE) = TRUE"
+    if state == "all":
+        return "1=1"
+    return "COALESCE(is_archived, FALSE) = FALSE AND COALESCE(is_deleted, FALSE) = FALSE"
+
+
+def blank_admin_filters(state="active"):
+    return {
+        "state": state,
+        "status": "",
+        "plan": "",
+        "payment_status": "",
+        "booking_type": "",
+        "created_from": "",
+        "created_to": "",
+        "search": "",
+        "search_phone": "",
+    }
+
+
+def build_signup_admin_query(filters, count_only=False):
+    select_sql = "SELECT COUNT(*) AS count" if count_only else "SELECT *"
+    where_clauses = [build_admin_state_clause(filters.get("state", "active"))]
+    params = []
+
+    status = filters.get("status")
+    if status:
+        if status == "__blank__":
+            where_clauses.append("COALESCE(NULLIF(TRIM(status), ''), '') = ''")
+        else:
+            where_clauses.append("COALESCE(status, '') = %s")
+            params.append(status)
+
+    plan = filters.get("plan")
+    if plan:
+        if plan == "Fix & Join":
+            where_clauses.append("COALESCE(fix_and_join, 'No') = 'Yes'")
+        elif plan in PLAN_PRICES:
+            where_clauses.append("COALESCE(fix_and_join, 'No') <> 'Yes'")
+            where_clauses.append("COALESCE(selected_plan, '') = %s")
+            params.append(plan)
+        elif plan == "One-Off Annual Service":
+            where_clauses.append("1=0")
+        elif plan == "__blank__":
+            where_clauses.append("COALESCE(fix_and_join, 'No') <> 'Yes'")
+            where_clauses.append("COALESCE(NULLIF(TRIM(selected_plan), ''), '') = ''")
+
+    payment_status = filters.get("payment_status")
+    if payment_status:
+        if payment_status == "__blank__":
+            where_clauses.append("COALESCE(NULLIF(TRIM(payment_status), ''), '') = ''")
+        else:
+            where_clauses.append("COALESCE(payment_status, '') = %s")
+            params.append(payment_status)
+
+    booking_type = filters.get("booking_type")
+    if booking_type:
+        if booking_type == "monthly_service_plan":
+            where_clauses.append("COALESCE(fix_and_join, 'No') <> 'Yes'")
+        elif booking_type == "fix_and_join":
+            where_clauses.append("COALESCE(fix_and_join, 'No') = 'Yes'")
+        elif booking_type == ONE_OFF_SERVICE_BOOKING_TYPE:
+            where_clauses.append("1=0")
+        elif booking_type == "__other__":
+            where_clauses.append("COALESCE(fix_and_join, 'No') <> 'Yes'")
+            where_clauses.append("COALESCE(NULLIF(TRIM(selected_plan), ''), '') = ''")
+
+    created_from = filters.get("created_from")
+    if created_from:
+        where_clauses.append("DATE(COALESCE(created_at, updated_at, NOW())) >= %s")
+        params.append(created_from)
+
+    created_to = filters.get("created_to")
+    if created_to:
+        where_clauses.append("DATE(COALESCE(created_at, updated_at, NOW())) <= %s")
+        params.append(created_to)
+
+    search = filters.get("search")
+    if search:
+        like_value = f"%{search}%"
+        phone_like = f"%{filters.get('search_phone') or normalize_phone_search(search)}%"
+        where_clauses.append(
+            """
+            (
+                COALESCE(full_name, '') ILIKE %s
+                OR COALESCE(email, '') ILIKE %s
+                OR REPLACE(COALESCE(phone, ''), ' ', '') ILIKE %s
+                OR COALESCE(address_line_1, address_line1, '') ILIKE %s
+                OR COALESCE(address_line_2, address_line2, '') ILIKE %s
+                OR COALESCE(city, '') ILIKE %s
+                OR COALESCE(postcode, '') ILIKE %s
+                OR COALESCE(selected_plan, '') ILIKE %s
+                OR CASE
+                    WHEN COALESCE(fix_and_join, 'No') = 'Yes' THEN 'Fix & Join'
+                    ELSE 'Monthly Service Plan'
+                  END ILIKE %s
+                OR COALESCE(stripe_checkout_session_id, '') ILIKE %s
+                OR COALESCE(stripe_customer_id, '') ILIKE %s
+                OR COALESCE(stripe_subscription_id, '') ILIKE %s
+                OR COALESCE(admin_notes, '') ILIKE %s
+            )
+            """
+        )
+        params.extend(
+            [
+                like_value,
+                like_value,
+                phone_like,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+            ]
+        )
+
+    query = f"""
+        {select_sql}
+        FROM signups
+        WHERE {" AND ".join(where_clauses)}
+    """
+    if not count_only:
+        query += " ORDER BY COALESCE(created_at, updated_at) DESC, id DESC"
+    return query, tuple(params)
+
+
+def build_one_off_admin_query(filters, count_only=False):
+    select_sql = "SELECT COUNT(*) AS count" if count_only else "SELECT *"
+    where_clauses = [build_admin_state_clause(filters.get("state", "active"))]
+    params = []
+
+    status = filters.get("status")
+    if status:
+        if status == "__blank__":
+            where_clauses.append("COALESCE(NULLIF(TRIM(status), ''), '') = ''")
+        else:
+            where_clauses.append("COALESCE(status, '') = %s")
+            params.append(status)
+
+    plan = filters.get("plan")
+    if plan:
+        if plan in {"Essential", "Standard", "Complete", "Fix & Join"}:
+            where_clauses.append("1=0")
+        elif plan == "One-Off Annual Service":
+            where_clauses.append(
+                "COALESCE(NULLIF(TRIM(booking_type), ''), %s) = %s"
+            )
+            params.extend([ONE_OFF_SERVICE_BOOKING_TYPE, ONE_OFF_SERVICE_BOOKING_TYPE])
+        elif plan == "__blank__":
+            where_clauses.append("COALESCE(NULLIF(TRIM(booking_type), ''), '') = ''")
+
+    payment_status = filters.get("payment_status")
+    if payment_status:
+        if payment_status == "__blank__":
+            where_clauses.append("COALESCE(NULLIF(TRIM(payment_status), ''), '') = ''")
+        else:
+            where_clauses.append("COALESCE(payment_status, '') = %s")
+            params.append(payment_status)
+
+    booking_type = filters.get("booking_type")
+    if booking_type:
+        if booking_type == ONE_OFF_SERVICE_BOOKING_TYPE:
+            where_clauses.append(
+                "COALESCE(NULLIF(TRIM(booking_type), ''), %s) = %s"
+            )
+            params.extend([ONE_OFF_SERVICE_BOOKING_TYPE, ONE_OFF_SERVICE_BOOKING_TYPE])
+        elif booking_type in {"monthly_service_plan", "fix_and_join"}:
+            where_clauses.append("1=0")
+        elif booking_type == "__other__":
+            where_clauses.append(
+                "(COALESCE(NULLIF(TRIM(booking_type), ''), '') = '' OR COALESCE(booking_type, '') <> %s)"
+            )
+            params.append(ONE_OFF_SERVICE_BOOKING_TYPE)
+
+    created_from = filters.get("created_from")
+    if created_from:
+        where_clauses.append("DATE(COALESCE(created_at, updated_at, NOW())) >= %s")
+        params.append(created_from)
+
+    created_to = filters.get("created_to")
+    if created_to:
+        where_clauses.append("DATE(COALESCE(created_at, updated_at, NOW())) <= %s")
+        params.append(created_to)
+
+    search = filters.get("search")
+    if search:
+        like_value = f"%{search}%"
+        phone_like = f"%{filters.get('search_phone') or normalize_phone_search(search)}%"
+        where_clauses.append(
+            """
+            (
+                COALESCE(full_name, '') ILIKE %s
+                OR COALESCE(first_name, '') ILIKE %s
+                OR COALESCE(last_name, '') ILIKE %s
+                OR COALESCE(email, '') ILIKE %s
+                OR REPLACE(COALESCE(phone, ''), ' ', '') ILIKE %s
+                OR COALESCE(address_line_1, '') ILIKE %s
+                OR COALESCE(address_line_2, '') ILIKE %s
+                OR COALESCE(town, '') ILIKE %s
+                OR COALESCE(county, '') ILIKE %s
+                OR COALESCE(postcode, '') ILIKE %s
+                OR COALESCE(booking_type, '') ILIKE %s
+                OR COALESCE(stripe_session_id, '') ILIKE %s
+                OR COALESCE(stripe_payment_intent_id, '') ILIKE %s
+                OR COALESCE(preferred_dates, '') ILIKE %s
+                OR COALESCE(customer_notes, '') ILIKE %s
+                OR COALESCE(access_notes, '') ILIKE %s
+            )
+            """
+        )
+        params.extend(
+            [
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                phone_like,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+                like_value,
+            ]
+        )
+
+    query = f"""
+        {select_sql}
+        FROM one_off_service_bookings
+        WHERE {" AND ".join(where_clauses)}
+    """
+    if not count_only:
+        query += " ORDER BY COALESCE(created_at, updated_at) DESC, id DESC"
+    return query, tuple(params)
+
+
+def fetch_admin_signups(filters):
+    query, params = build_signup_admin_query(filters)
+    rows = db_execute(query, params, fetchall=True) or []
+    return normalize_admin_signup_rows(rows)
+
+
+def fetch_admin_one_off_bookings(filters):
+    query, params = build_one_off_admin_query(filters)
+    rows = db_execute(query, params, fetchall=True) or []
+    return normalize_admin_one_off_rows(rows)
+
+
+def count_admin_records(record_type, state):
+    filters = blank_admin_filters(state=state)
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        query, params = build_one_off_admin_query(filters, count_only=True)
+    else:
+        query, params = build_signup_admin_query(filters, count_only=True)
+    row = db_execute(query, params, fetchone=True) or {}
+    return row.get("count", 0)
+
+
+def fetch_admin_distinct_values(table_name, column_name):
+    rows = db_execute(
+        f"""
+        SELECT DISTINCT COALESCE(NULLIF(TRIM({column_name}), ''), '__blank__') AS value
+        FROM {table_name}
+        ORDER BY value ASC
+        """,
+        fetchall=True,
+    ) or []
+    return [row["value"] for row in rows if row.get("value")]
+
+
+def build_select_options(values, default_order):
+    unique_values = list(dict.fromkeys(values))
+    ordered = [value for value in default_order if value in unique_values]
+    ordered.extend(sorted(value for value in unique_values if value not in ordered))
+    return [
+        {"value": value, "label": "Unknown / blank" if value == "__blank__" else value}
+        for value in ordered
+    ]
+
+
+def build_admin_filter_options():
+    status_values = (
+        fetch_admin_distinct_values("signups", "status")
+        + fetch_admin_distinct_values("one_off_service_bookings", "status")
+        + ADMIN_DEFAULT_STATUS_OPTIONS
+    )
+    payment_values = (
+        fetch_admin_distinct_values("signups", "payment_status")
+        + fetch_admin_distinct_values("one_off_service_bookings", "payment_status")
+        + ADMIN_DEFAULT_PAYMENT_OPTIONS
+    )
+    return {
+        "status_options": build_select_options(status_values, ADMIN_DEFAULT_STATUS_OPTIONS + ["__blank__"]),
+        "payment_options": build_select_options(payment_values, ADMIN_DEFAULT_PAYMENT_OPTIONS + ["__blank__"]),
+        "plan_options": [{"value": value, "label": label} for value, label in ADMIN_PRODUCT_OPTIONS],
+        "booking_type_options": [
+            {"value": value, "label": label} for value, label in ADMIN_BOOKING_TYPE_OPTIONS
+        ],
+    }
+
+
+def build_admin_records(signups, one_off_bookings):
+    records = list(signups) + list(one_off_bookings)
+    records.sort(
+        key=lambda row: (
+            row.get("created_at") or row.get("updated_at") or datetime.min,
+            row.get("id") or 0,
+        ),
+        reverse=True,
+    )
+    return records
+
+
+def fetch_admin_record(record_type, record_id):
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        return fetch_one_off_booking(record_id)
+    if record_type == ADMIN_RECORD_TYPE_SIGNUP:
+        return fetch_signup(record_id)
+    return None
 
 
 def get_eligible_plans(broken, under3, warranty):
@@ -645,6 +1215,7 @@ def ensure_extra_columns():
                 ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS status TEXT,
+                ADD COLUMN IF NOT EXISTS admin_notes TEXT,
                 ADD COLUMN IF NOT EXISTS payment_status TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT,
                 ADD COLUMN IF NOT EXISTS stripe_checkout_session_id TEXT,
@@ -657,7 +1228,15 @@ def ensure_extra_columns():
                 ADD COLUMN IF NOT EXISTS contract_pdf_filename TEXT,
                 ADD COLUMN IF NOT EXISTS contract_pdf_generated_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS ip_address TEXT,
-                ADD COLUMN IF NOT EXISTS user_agent TEXT
+                ADD COLUMN IF NOT EXISTS user_agent TEXT,
+                ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS archived_by TEXT,
+                ADD COLUMN IF NOT EXISTS archive_reason TEXT,
+                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS deleted_by TEXT,
+                ADD COLUMN IF NOT EXISTS delete_reason TEXT
                 """
             )
 
@@ -699,6 +1278,8 @@ def ensure_extra_columns():
                     customer_email_sent = COALESCE(customer_email_sent, FALSE),
                     admin_email_sent = COALESCE(admin_email_sent, FALSE),
                     reminder_sent = COALESCE(reminder_sent, FALSE),
+                    is_archived = COALESCE(is_archived, FALSE),
+                    is_deleted = COALESCE(is_deleted, FALSE),
                     last_payment_link_sent_at = COALESCE(last_payment_link_sent_at, stripe_payment_link_sent_at),
                     stripe_payment_link_sent_at = COALESCE(stripe_payment_link_sent_at, last_payment_link_sent_at),
                     updated_at = COALESCE(updated_at, created_at, NOW())
@@ -739,9 +1320,41 @@ def ensure_extra_columns():
                     appointment_time TEXT,
                     customer_email_sent BOOLEAN DEFAULT FALSE,
                     admin_email_sent BOOLEAN DEFAULT FALSE,
+                    is_archived BOOLEAN DEFAULT FALSE,
+                    archived_at TIMESTAMP WITHOUT TIME ZONE,
+                    archived_by TEXT,
+                    archive_reason TEXT,
+                    is_deleted BOOLEAN DEFAULT FALSE,
+                    deleted_at TIMESTAMP WITHOUT TIME ZONE,
+                    deleted_by TEXT,
+                    delete_reason TEXT,
                     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
                 )
+                """
+            )
+
+            cur.execute(
+                """
+                ALTER TABLE one_off_service_bookings
+                ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS archived_by TEXT,
+                ADD COLUMN IF NOT EXISTS archive_reason TEXT,
+                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS deleted_by TEXT,
+                ADD COLUMN IF NOT EXISTS delete_reason TEXT,
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
+                """
+            )
+
+            cur.execute(
+                """
+                UPDATE one_off_service_bookings
+                SET is_archived = COALESCE(is_archived, FALSE),
+                    is_deleted = COALESCE(is_deleted, FALSE),
+                    updated_at = COALESCE(updated_at, created_at, NOW())
                 """
             )
 
@@ -756,6 +1369,34 @@ def ensure_extra_columns():
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_off_bookings_stripe_payment_intent_id
                 ON one_off_service_bookings (stripe_payment_intent_id)
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_signups_admin_state
+                ON signups (is_deleted, is_archived, created_at DESC)
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_one_off_bookings_admin_state
+                ON one_off_service_bookings (is_deleted, is_archived, created_at DESC)
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS admin_action_log (
+                    id SERIAL PRIMARY KEY,
+                    customer_id INTEGER NOT NULL,
+                    customer_table TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    action_by TEXT,
+                    action_timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+                    details TEXT
+                )
                 """
             )
         conn.commit()
@@ -2077,43 +2718,58 @@ def admin_logout():
 @login_required
 def admin():
     ensure_extra_columns()
+    filters = parse_admin_filters(request.args)
+    current_args = request.args.to_dict(flat=True)
 
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM signups ORDER BY id DESC")
-            rows = normalize_signup_rows(cur.fetchall())
+    signups = fetch_admin_signups(filters)
+    one_off_bookings = fetch_admin_one_off_bookings(filters)
+    records = build_admin_records(signups, one_off_bookings)
 
-            cur.execute("SELECT COUNT(*) FROM signups")
-            total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*) FROM signups WHERE payment_status='Paid'")
-            paid = cur.fetchone()["count"]
-
-            cur.execute("SELECT * FROM one_off_service_bookings ORDER BY id DESC")
-            one_off_rows = normalize_one_off_rows(cur.fetchall())
-
-            cur.execute("SELECT COUNT(*) FROM one_off_service_bookings")
-            one_off_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*) FROM one_off_service_bookings WHERE payment_status='Paid'")
-            one_off_paid = cur.fetchone()["count"]
-    finally:
-        conn.close()
-
-    stats = {
-        "total": total,
-        "paid": paid,
-        "conversion": round((paid / total) * 100, 1) if total else 0,
-        "one_off_total": one_off_total,
-        "one_off_paid": one_off_paid,
+    counts = {
+        "active": count_admin_records(ADMIN_RECORD_TYPE_SIGNUP, "active")
+        + count_admin_records(ADMIN_RECORD_TYPE_ONE_OFF, "active"),
+        "archived": count_admin_records(ADMIN_RECORD_TYPE_SIGNUP, "archived")
+        + count_admin_records(ADMIN_RECORD_TYPE_ONE_OFF, "archived"),
+        "deleted": count_admin_records(ADMIN_RECORD_TYPE_SIGNUP, "deleted")
+        + count_admin_records(ADMIN_RECORD_TYPE_ONE_OFF, "deleted"),
+        "results": len(records),
+        "paid": sum(1 for row in records if clean(row.get("payment_status")) == "Paid"),
+        "pending": sum(
+            1
+            for row in records
+            if clean(row.get("payment_status")) in ADMIN_PENDING_PAYMENT_STATUSES
+        ),
+        "one_off": sum(
+            1 for row in records if row.get("record_type") == ADMIN_RECORD_TYPE_ONE_OFF
+        ),
     }
+
+    filter_options = build_admin_filter_options()
+    state_tabs = [
+        {
+            "value": state_value,
+            "label": label,
+            "url": build_admin_url("admin", current_args, state=state_value),
+            "active": filters["state"] == state_value,
+        }
+        for state_value, label in ADMIN_VIEW_STATES.items()
+    ]
 
     return render_template(
         "admin.html",
-        signups=rows,
-        one_off_bookings=one_off_rows,
-        stats=stats,
+        records=records,
+        filters=filters,
+        counts=counts,
+        state_tabs=state_tabs,
+        current_view_label=ADMIN_VIEW_STATES[filters["state"]],
+        current_query_string=request.query_string.decode(),
+        export_current_url=build_admin_url("export_csv", current_args, scope="current"),
+        export_all_url=url_for("export_csv", scope="all"),
+        clear_filters_url=url_for("admin"),
+        status_options=filter_options["status_options"],
+        payment_options=filter_options["payment_options"],
+        plan_options=filter_options["plan_options"],
+        booking_type_options=filter_options["booking_type_options"],
         one_off_statuses=ONE_OFF_BOOKING_STATUSES,
         appointment_statuses=ONE_OFF_APPOINTMENT_STATUSES,
         build_maps_link=build_maps_link,
@@ -2128,7 +2784,7 @@ def update_annual_service_booking(booking_id):
     booking = fetch_one_off_booking(booking_id)
     if not booking:
         flash("Annual service booking not found.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     status = clean(request.form.get("status"))
     appointment_status = clean(request.form.get("appointment_status"))
@@ -2138,11 +2794,11 @@ def update_annual_service_booking(booking_id):
 
     if status not in ONE_OFF_BOOKING_STATUSES:
         flash("Please choose a valid booking status.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     if appointment_status not in ONE_OFF_APPOINTMENT_STATUSES:
         flash("Please choose a valid appointment status.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     db_execute(
         """
@@ -2168,7 +2824,117 @@ def update_annual_service_booking(booking_id):
     )
 
     flash("Annual service booking updated.", "success")
-    return redirect(url_for("admin"))
+    return redirect_to_admin()
+
+
+@app.route("/admin/customer/<record_type>/<int:record_id>/archive", methods=["POST"])
+@login_required
+def archive_customer(record_type, record_id):
+    ensure_extra_columns()
+
+    table_name = get_admin_table_name(record_type)
+    record = fetch_admin_record(record_type, record_id)
+    if not table_name or not record:
+        flash("Customer record not found.", "error")
+        return redirect_to_admin()
+
+    now = datetime.now(UTC)
+    archive_reason = clean(request.form.get("archive_reason")) or None
+
+    db_execute(
+        f"""
+        UPDATE {table_name}
+        SET is_archived=TRUE,
+            archived_at=%s,
+            archived_by=%s,
+            archive_reason=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (now, get_admin_actor(), archive_reason, now, record_id),
+        commit=True,
+    )
+    log_admin_action(
+        record_id,
+        record_type,
+        "archive_customer",
+        f"Archived from admin dashboard. Reason: {archive_reason or 'Not provided'}",
+    )
+
+    flash("Customer archived. The record is still stored safely.", "success")
+    return redirect_to_admin()
+
+
+@app.route("/admin/customer/<record_type>/<int:record_id>/delete", methods=["POST"])
+@login_required
+def delete_customer(record_type, record_id):
+    ensure_extra_columns()
+
+    table_name = get_admin_table_name(record_type)
+    record = fetch_admin_record(record_type, record_id)
+    if not table_name or not record:
+        flash("Customer record not found.", "error")
+        return redirect_to_admin()
+
+    now = datetime.now(UTC)
+    delete_reason = clean(request.form.get("delete_reason")) or None
+
+    db_execute(
+        f"""
+        UPDATE {table_name}
+        SET is_deleted=TRUE,
+            deleted_at=%s,
+            deleted_by=%s,
+            delete_reason=%s,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (now, get_admin_actor(), delete_reason, now, record_id),
+        commit=True,
+    )
+    log_admin_action(
+        record_id,
+        record_type,
+        "delete_customer",
+        f"Soft deleted from admin dashboard. Reason: {delete_reason or 'Not provided'}",
+    )
+
+    flash("Customer moved to Deleted. The database record has not been erased.", "success")
+    return redirect_to_admin()
+
+
+@app.route("/admin/customer/<record_type>/<int:record_id>/restore", methods=["POST"])
+@login_required
+def restore_customer(record_type, record_id):
+    ensure_extra_columns()
+
+    table_name = get_admin_table_name(record_type)
+    record = fetch_admin_record(record_type, record_id)
+    if not table_name or not record:
+        flash("Customer record not found.", "error")
+        return redirect_to_admin()
+
+    db_execute(
+        f"""
+        UPDATE {table_name}
+        SET is_archived=FALSE,
+            archived_at=NULL,
+            archived_by=NULL,
+            archive_reason=NULL,
+            is_deleted=FALSE,
+            deleted_at=NULL,
+            deleted_by=NULL,
+            delete_reason=NULL,
+            updated_at=%s
+        WHERE id=%s
+        """,
+        (datetime.now(UTC), record_id),
+        commit=True,
+    )
+    log_admin_action(record_id, record_type, "restore_customer", "Restored to active admin list.")
+
+    flash("Customer restored to the active admin list.", "success")
+    return redirect_to_admin()
 
 
 @app.route("/admin/resend/<int:id>", methods=["POST"])
@@ -2177,18 +2943,18 @@ def resend_payment(id):
     missing_env = validate_required_env()
     if missing_env:
         flash(f"Server configuration error: missing {', '.join(missing_env)}", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     signup = fetch_signup(id)
     if not signup:
         flash("Signup not found.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     plan = signup["selected_plan"]
 
     if not STRIPE_PRICES.get(plan):
         flash(f"Stripe price is not configured for {plan}.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     try:
         checkout_session = create_checkout_session(
@@ -2202,7 +2968,7 @@ def resend_payment(id):
     except Exception:
         logger.exception("Failed generating payment link for signup %s", id)
         flash("Could not generate a new payment link.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     email_note = ""
     try:
@@ -2213,7 +2979,7 @@ def resend_payment(id):
         email_note = " but email delivery failed"
 
     flash(f"New payment link generated{email_note}.", "success")
-    return redirect(url_for("admin"))
+    return redirect_to_admin()
 
 
 @app.route("/admin/run-reminders", methods=["POST", "GET"])
@@ -2244,7 +3010,7 @@ def run_reminders():
             logger.exception("Failed sending reminder for signup %s", row.get("id"))
 
     flash(f"Reminder run complete. Emails sent: {sent_count}", "success")
-    return redirect(url_for("admin"))
+    return redirect_to_admin()
 
 
 @app.route("/admin/regenerate-pdfs", methods=["POST"])
@@ -2256,7 +3022,7 @@ def regenerate_pdfs():
     except Exception:
         logger.exception("Failed regenerating PDFs.")
         flash("Could not regenerate all PDFs.", "error")
-    return redirect(url_for("admin"))
+    return redirect_to_admin()
 
 def regenerate_all_contract_pdfs():
     rows = db_execute("SELECT id FROM signups ORDER BY id ASC", fetchall=True) or []
@@ -2266,21 +3032,35 @@ def regenerate_all_contract_pdfs():
             pdf_bytes = build_contract_pdf_bytes(signup)
             save_contract_pdf_to_db(row["id"], pdf_bytes)
 
+
+def export_bool(value):
+    return "Yes" if boolish_to_bool(value) else "No"
+
+
 @app.route("/admin/export.csv")
 @login_required
 def export_csv():
     ensure_extra_columns()
+    scope = clean(request.args.get("scope")) or "current"
+    filters = parse_admin_filters(request.args)
+    if scope == "all":
+        filters = blank_admin_filters(state="all")
 
-    rows = db_execute(
-        "SELECT * FROM signups ORDER BY id DESC",
-        fetchall=True,
-    ) or []
+    records = build_admin_records(
+        fetch_admin_signups(filters),
+        fetch_admin_one_off_bookings(filters),
+    )
 
     output = io.StringIO()
     writer = csv.writer(output)
 
-    writer.writerow([
+    writer.writerow(
+        [
         "ID",
+        "Record Type",
+        "State",
+        "Booking Type",
+        "Plan / Product",
         "Created At",
         "Updated At",
         "Full Name",
@@ -2288,20 +3068,26 @@ def export_csv():
         "Phone",
         "Address Line 1",
         "Address Line 2",
-        "City",
+        "Town / City",
+        "County",
         "Postcode",
-        "Selected Plan",
         "Monthly Price",
+        "Amount Paid",
+        "Boiler Make",
+        "Boiler Model",
         "Boiler Broken",
         "Boiler Under 3 Years",
         "Boiler Warranty Valid",
         "Fix And Join",
         "Fix And Join Fee",
-        "Signature Name",
-        "Has Drawn Signature",
-        "Accepted Terms",
-        "Accepted Privacy",
-        "Accepted Fair Usage",
+        "Preferred Dates",
+        "Customer Notes",
+        "Access Notes",
+        "Admin Notes",
+        "Appointment Status",
+        "Assigned Engineer",
+        "Appointment Date",
+        "Appointment Time",
         "Status",
         "Payment Status",
         "Customer Email Sent",
@@ -2310,40 +3096,60 @@ def export_csv():
         "Reminder Sent",
         "Reminder Sent At",
         "Payment Completed At",
-        "Last Payment Link Sent At",
+        "Stripe Checkout URL",
+        "Stripe Checkout Session ID",
+        "Stripe Payment Intent ID",
+        "Stripe Customer ID",
+        "Stripe Subscription ID",
         "Contract PDF Stored",
         "Contract PDF Filename",
         "Contract PDF Generated At",
-        "Stripe Checkout URL",
-        "Stripe Checkout Session ID",
-        "Stripe Customer ID",
-        "Stripe Subscription ID",
-    ])
+        "Is Archived",
+        "Archived At",
+        "Archived By",
+        "Archive Reason",
+        "Is Deleted",
+        "Deleted At",
+        "Deleted By",
+        "Delete Reason",
+    ]
+    )
 
-    for row in rows:
-        writer.writerow([
+    for row in records:
+        writer.writerow(
+            [
             row.get("id"),
+            row.get("record_type_label"),
+            row.get("record_state", "").title(),
+            row.get("booking_type_label"),
+            row.get("product_label"),
             row.get("created_at"),
             row.get("updated_at"),
             row.get("full_name"),
             row.get("email"),
             row.get("phone"),
-            row.get("address_line_1"),
-            row.get("address_line_2"),
-            row.get("city"),
+            value_or_first(row, "address_line_1", "address_line1"),
+            value_or_first(row, "address_line_2", "address_line2"),
+            value_or_first(row, "city", "town"),
+            row.get("county"),
             row.get("postcode"),
-            row.get("selected_plan"),
             row.get("monthly_price"),
+            row.get("amount_paid"),
+            row.get("boiler_make"),
+            row.get("boiler_model"),
             row.get("boiler_broken"),
             row.get("boiler_under_3_years"),
             row.get("boiler_warranty_valid"),
             row.get("fix_and_join"),
             row.get("fix_and_join_fee"),
-            row.get("signature_name"),
-            "Yes" if row.get("signature_data") else "No",
-            row.get("accepted_terms"),
-            row.get("accepted_privacy"),
-            row.get("accepted_fair_usage"),
+            row.get("preferred_dates"),
+            row.get("customer_notes"),
+            row.get("access_notes"),
+            row.get("admin_notes"),
+            row.get("appointment_status"),
+            row.get("assigned_engineer"),
+            row.get("appointment_date"),
+            row.get("appointment_time"),
             row.get("status"),
             row.get("payment_status"),
             row.get("customer_email_sent"),
@@ -2352,18 +3158,28 @@ def export_csv():
             row.get("reminder_sent"),
             row.get("reminder_sent_at"),
             row.get("payment_completed_at"),
-            row.get("last_payment_link_sent_at"),
-            "Yes" if row.get("contract_pdf") else "No",
-            row.get("contract_pdf_filename"),
-            row.get("contract_pdf_generated_at"),
             row.get("stripe_checkout_url"),
             row.get("stripe_checkout_session_id"),
+            row.get("stripe_payment_intent_id"),
             row.get("stripe_customer_id"),
             row.get("stripe_subscription_id"),
-        ])
+            export_bool(row.get("contract_pdf")),
+            row.get("contract_pdf_filename"),
+            row.get("contract_pdf_generated_at"),
+            export_bool(row.get("is_archived")),
+            row.get("archived_at"),
+            row.get("archived_by"),
+            row.get("archive_reason"),
+            export_bool(row.get("is_deleted")),
+            row.get("deleted_at"),
+            row.get("deleted_by"),
+            row.get("delete_reason"),
+        ]
+        )
 
     response = Response(output.getvalue(), mimetype="text/csv")
-    response.headers["Content-Disposition"] = "attachment; filename=sjm_signups.csv"
+    filename = "sjm_all_customers.csv" if scope == "all" else "sjm_customers_current_view.csv"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
 
@@ -2373,7 +3189,7 @@ def admin_contract(signup_id):
     signup = fetch_signup(signup_id)
     if not signup:
         flash("Signup not found.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     try:
         pdf_bytes = get_stored_contract_pdf_bytes(signup)
@@ -2386,7 +3202,7 @@ def admin_contract(signup_id):
     except Exception:
         logger.exception("Failed building or loading PDF for signup %s", signup_id)
         flash("Could not generate contract PDF.", "error")
-        return redirect(url_for("admin"))
+        return redirect_to_admin()
 
     return Response(
         pdf_bytes,

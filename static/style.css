@@ -820,6 +820,74 @@ textarea:focus{
   align-items:flex-start;
 }
 
+.inline-admin-button-form{
+  display:inline-flex;
+}
+
+.admin-note-card{
+  margin-bottom:24px;
+}
+
+.admin-note-copy{
+  margin:0;
+  line-height:1.7;
+}
+
+.admin-tabs{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:24px;
+}
+
+.admin-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:11px 16px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,0.03);
+  color:#fff;
+  font-weight:700;
+}
+
+.admin-tab.active{
+  background:rgba(255,106,0,0.16);
+  border-color:rgba(255,106,0,0.36);
+  color:#ffe0cb;
+}
+
+.admin-filter-card{
+  padding:22px;
+}
+
+.admin-filter-form{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.admin-filter-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(180px, 1fr));
+  gap:16px;
+}
+
+.admin-filter-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  color:var(--muted);
+  font-size:0.9rem;
+}
+
+.admin-filter-actions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
 .table-card{
   padding:0;
   overflow:hidden;
@@ -833,6 +901,10 @@ textarea:focus{
   width:100%;
   border-collapse:collapse;
   min-width:1300px;
+}
+
+.admin-records-table{
+  min-width:1600px;
 }
 
 .data-table th,
@@ -893,6 +965,24 @@ textarea:focus{
   background:rgba(255,255,255,0.06);
   color:#ddd;
   border:1px solid rgba(255,255,255,0.12);
+}
+
+.state-pill.active{
+  background:rgba(31,164,99,0.14);
+  color:#d0ffe4;
+  border:1px solid rgba(31,164,99,0.35);
+}
+
+.state-pill.archived{
+  background:rgba(104,114,132,0.16);
+  color:#dfe5ef;
+  border:1px solid rgba(166,178,198,0.28);
+}
+
+.state-pill.deleted{
+  background:rgba(201,75,75,0.14);
+  color:#ffd0d0;
+  border:1px solid rgba(201,75,75,0.35);
 }
 
 .stats-grid-wide{
@@ -959,6 +1049,69 @@ textarea:focus{
 .admin-inline-form input,
 .admin-inline-form select{
   padding:10px 12px;
+}
+
+.compact-admin-form{
+  min-width:240px;
+}
+
+.record-row-archived td{
+  opacity:0.78;
+}
+
+.record-row-deleted td{
+  opacity:0.6;
+}
+
+.record-row-deleted{
+  background:rgba(201,75,75,0.04);
+}
+
+.record-meta{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.record-meta span{
+  font-size:0.86rem;
+  color:var(--muted);
+}
+
+.record-badges{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.record-timestamps{
+  display:grid;
+  gap:6px;
+  margin-top:12px;
+  font-size:0.88rem;
+}
+
+.record-actions{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-width:240px;
+}
+
+.record-soft-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.admin-danger-btn{
+  border-color:rgba(201,75,75,0.4);
+  color:#ffd0d0;
+}
+
+.admin-danger-btn:hover{
+  background:rgba(201,75,75,0.12);
 }
 
 .annual-service-layout{
@@ -1046,6 +1199,10 @@ textarea:focus{
   .annual-service-layout{
     grid-template-columns:1fr;
   }
+
+  .admin-filter-grid{
+    grid-template-columns:1fr 1fr;
+  }
 }
 
 @media (max-width: 760px){
@@ -1070,6 +1227,10 @@ textarea:focus{
     grid-template-columns:1fr;
   }
 
+  .admin-filter-grid{
+    grid-template-columns:1fr;
+  }
+
   .hero{
     padding:32px 22px;
   }
@@ -1084,6 +1245,14 @@ textarea:focus{
 
   .admin-top-bar{
     flex-direction:column;
+  }
+
+  .admin-tabs{
+    flex-direction:column;
+  }
+
+  .admin-tab{
+    justify-content:flex-start;
   }
 
   .footer-inner{

@@ -5,45 +5,58 @@
 {% block content %}
 <section class="page-header">
   <h1>Admin Dashboard</h1>
-  <p>Manage service plan signups, one-off annual services, payments, documents and reminders.</p>
+  <p>Manage service plan signups, Fix &amp; Join records, one-off annual services, payments, documents and reminders.</p>
 </section>
 
 <div class="admin-top-bar">
   <div class="stats-grid stats-grid-wide">
     <div class="stat-card">
-      <span class="stat-label">Service plan signups</span>
-      <strong class="stat-value">{{ stats.total }}</strong>
+      <span class="stat-label">Showing</span>
+      <strong class="stat-value">{{ counts.results }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">Paid plans</span>
-      <strong class="stat-value">{{ stats.paid }}</strong>
+      <span class="stat-label">Active</span>
+      <strong class="stat-value">{{ counts.active }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">Plan conversion</span>
-      <strong class="stat-value">{{ stats.conversion }}%</strong>
+      <span class="stat-label">Archived</span>
+      <strong class="stat-value">{{ counts.archived }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">One-off bookings</span>
-      <strong class="stat-value">{{ stats.one_off_total }}</strong>
+      <span class="stat-label">Deleted</span>
+      <strong class="stat-value">{{ counts.deleted }}</strong>
     </div>
 
     <div class="stat-card">
-      <span class="stat-label">Paid one-offs</span>
-      <strong class="stat-value">{{ stats.one_off_paid }}</strong>
+      <span class="stat-label">Paid in view</span>
+      <strong class="stat-value">{{ counts.paid }}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">Pending in view</span>
+      <strong class="stat-value">{{ counts.pending }}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-label">One-off in view</span>
+      <strong class="stat-value">{{ counts.one_off }}</strong>
     </div>
   </div>
 
   <div class="admin-actions">
-    <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export plan signups CSV</a>
+    <a href="{{ export_current_url }}" class="btn btn-secondary">Export current view</a>
+    <a href="{{ export_all_url }}" class="btn btn-secondary">Export all customers</a>
 
-    <form method="POST" action="{{ url_for('run_reminders') }}" style="display:inline;">
+    <form method="POST" action="{{ url_for('run_reminders') }}" class="inline-admin-button-form">
+      <input type="hidden" name="return_query" value="{{ current_query_string }}">
       <button type="submit" class="btn btn-primary">Run reminders</button>
     </form>
 
-    <form method="POST" action="{{ url_for('regenerate_pdfs') }}" style="display:inline;">
+    <form method="POST" action="{{ url_for('regenerate_pdfs') }}" class="inline-admin-button-form">
+      <input type="hidden" name="return_query" value="{{ current_query_string }}">
       <button type="submit" class="btn btn-secondary">Regenerate PDFs</button>
     </form>
 
@@ -51,338 +64,358 @@
   </div>
 </div>
 
+<div class="card admin-note-card">
+  <p class="muted-copy admin-note-copy">
+    Archive hides a customer from the active list but keeps their record. Delete moves the customer to Deleted but does not permanently erase the database record.
+  </p>
+</div>
+
+<nav class="admin-tabs" aria-label="Customer views">
+  {% for tab in state_tabs %}
+    <a href="{{ tab.url }}" class="admin-tab{% if tab.active %} active{% endif %}">
+      {{ tab.label }}
+    </a>
+  {% endfor %}
+</nav>
+
 <section class="admin-section">
-  <div class="section-header-row">
-    <div>
-      <h2>One-Off Annual Services</h2>
-      <p class="section-copy">Paid online annual service requests, kept separate from monthly plans and Fix &amp; Join.</p>
-    </div>
-  </div>
+  <div class="card admin-filter-card">
+    <form method="GET" action="{{ url_for('admin') }}" class="admin-filter-form">
+      <input type="hidden" name="state" value="{{ filters.state }}">
 
-  <div class="card table-card">
-    {% if one_off_bookings %}
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Created</th>
-              <th>Type</th>
-              <th>Customer</th>
-              <th>Contact</th>
-              <th>Address</th>
-              <th>Boiler</th>
-              <th>Preferences</th>
-              <th>Payment</th>
-              <th>Booking</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+      <div class="admin-filter-grid">
+        <label class="field-span-2">
+          Search
+          <input
+            type="search"
+            name="search"
+            value="{{ filters.search }}"
+            placeholder="Search by name, phone, email, address or postcode..."
+          >
+        </label>
 
-          <tbody>
-            {% for booking in one_off_bookings %}
-              <tr>
-                <td>#{{ booking.id }}</td>
-                <td>
-                  <div>{{ booking.created_at or "-" }}</div>
-                  {% if booking.updated_at %}
-                    <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ booking.updated_at }}</div>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="record-chip one-off">One-Off Annual Service</span>
-                </td>
-                <td>
-                  <strong>{{ booking.full_name or "-" }}</strong>
-                </td>
-                <td>
-                  <div>{{ booking.email or "-" }}</div>
-                  <div>{{ booking.phone or "-" }}</div>
-                </td>
-                <td>
-                  <div>{{ booking.address_line_1 or "" }}</div>
-                  {% if booking.address_line_2 %}
-                    <div>{{ booking.address_line_2 }}</div>
-                  {% endif %}
-                  <div>{{ booking.town or "" }}</div>
-                  {% if booking.county %}
-                    <div>{{ booking.county }}</div>
-                  {% endif %}
-                  <div>{{ booking.postcode or "" }}</div>
-                </td>
-                <td>
-                  <div>Make: {{ booking.boiler_make or "-" }}</div>
-                  <div>Model: {{ booking.boiler_model or "-" }}</div>
-                </td>
-                <td>
-                  <div><strong>Preferred:</strong> {{ booking.preferred_dates or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Notes:</strong> {{ booking.customer_notes or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Access:</strong> {{ booking.access_notes or "-" }}</div>
-                </td>
-                <td>
-                  {% if booking.payment_status == "Paid" %}
-                    <span class="status-pill paid">Paid</span>
-                  {% elif booking.payment_status == "Failed" %}
-                    <span class="status-pill failed">Failed</span>
-                  {% elif booking.payment_status == "Cancelled" %}
-                    <span class="status-pill failed">Cancelled</span>
-                  {% else %}
-                    <span class="status-pill pending">{{ booking.payment_status or "Pending" }}</span>
-                  {% endif %}
-
-                  <div style="margin-top:8px;"><strong>Amount:</strong> £{{ booking.amount_paid or one_off_service_price }}</div>
-                  <div style="margin-top:8px;"><strong>Session:</strong> {{ booking.stripe_session_id or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Payment ref:</strong> {{ booking.stripe_payment_intent_id or "-" }}</div>
-                </td>
-                <td>
-                  <div><strong>Status:</strong> {{ booking.status or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Appointment:</strong> {{ booking.appointment_status or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Engineer:</strong> {{ booking.assigned_engineer or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Date:</strong> {{ booking.appointment_date or "-" }}</div>
-                  <div style="margin-top:8px;"><strong>Time:</strong> {{ booking.appointment_time or "-" }}</div>
-                </td>
-                <td>
-                  <form method="POST" action="{{ url_for('update_annual_service_booking', booking_id=booking.id) }}" class="admin-inline-form">
-                    <label>
-                      Status
-                      <select name="status">
-                        {% for option in one_off_statuses %}
-                          <option value="{{ option }}" {% if booking.status == option %}selected{% endif %}>{{ option }}</option>
-                        {% endfor %}
-                      </select>
-                    </label>
-
-                    <label>
-                      Appointment
-                      <select name="appointment_status">
-                        {% for option in appointment_statuses %}
-                          <option value="{{ option }}" {% if booking.appointment_status == option %}selected{% endif %}>{{ option }}</option>
-                        {% endfor %}
-                      </select>
-                    </label>
-
-                    <label>
-                      Engineer
-                      <input type="text" name="assigned_engineer" value="{{ booking.assigned_engineer or '' }}">
-                    </label>
-
-                    <label>
-                      Date
-                      <input type="date" name="appointment_date" value="{{ booking.appointment_date or '' }}">
-                    </label>
-
-                    <label>
-                      Time
-                      <input type="text" name="appointment_time" value="{{ booking.appointment_time or '' }}" placeholder="AM / PM / 10:30">
-                    </label>
-
-                    <button type="submit" class="btn btn-primary btn-small">Save</button>
-                  </form>
-                </td>
-              </tr>
+        <label>
+          Status
+          <select name="status">
+            <option value="">All statuses</option>
+            {% for option in status_options %}
+              <option value="{{ option.value }}" {% if filters.status == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
             {% endfor %}
-          </tbody>
-        </table>
+          </select>
+        </label>
+
+        <label>
+          Plan / product type
+          <select name="plan">
+            <option value="">All plans / products</option>
+            {% for option in plan_options %}
+              <option value="{{ option.value }}" {% if filters.plan == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          Payment status
+          <select name="payment_status">
+            <option value="">All payment statuses</option>
+            {% for option in payment_options %}
+              <option value="{{ option.value }}" {% if filters.payment_status == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          Booking type
+          <select name="booking_type">
+            <option value="">All booking types</option>
+            {% for option in booking_type_options %}
+              <option value="{{ option.value }}" {% if filters.booking_type == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          Created from
+          <input type="date" name="created_from" value="{{ filters.created_from }}">
+        </label>
+
+        <label>
+          Created to
+          <input type="date" name="created_to" value="{{ filters.created_to }}">
+        </label>
       </div>
-    {% else %}
-      <p>No one-off annual service bookings yet.</p>
-    {% endif %}
+
+      <div class="admin-filter-actions">
+        <button type="submit" class="btn btn-primary">Search</button>
+        <a href="{{ clear_filters_url }}" class="btn btn-secondary">Reset filters</a>
+      </div>
+    </form>
   </div>
 </section>
 
 <section class="admin-section">
   <div class="section-header-row">
     <div>
-      <h2>Service Plan Signups</h2>
-      <p class="section-copy">Monthly cover applications, including Fix &amp; Join where the boiler was broken at signup.</p>
+      <h2>{{ current_view_label }}</h2>
+      <p class="section-copy">Showing {{ counts.results }} result{% if counts.results != 1 %}s{% endif %}. Active: {{ counts.active }} | Archived: {{ counts.archived }} | Deleted: {{ counts.deleted }}</p>
     </div>
   </div>
 
   <div class="card table-card">
-    {% if signups %}
+    {% if records %}
       <div class="table-wrap">
-        <table class="data-table">
+        <table class="data-table admin-records-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Created</th>
               <th>Customer</th>
               <th>Contact</th>
               <th>Address</th>
-              <th>Plan</th>
-              <th>Boiler</th>
-              <th>Consent</th>
-              <th>Emails</th>
-              <th>Reminder</th>
+              <th>Plan / Product</th>
+              <th>Booking</th>
               <th>Payment</th>
-              <th>PDF</th>
-              <th>Map</th>
+              <th>Details</th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {% for s in signups %}
-              <tr>
-                <td>#{{ s.id }}</td>
+            {% for record in records %}
+              <tr class="record-row record-row-{{ record.record_state }}">
                 <td>
-                  <div>{{ s.created_at or "-" }}</div>
-                  {% if s.updated_at %}
-                    <div style="margin-top:6px; font-size:0.85rem;">Updated: {{ s.updated_at }}</div>
-                  {% endif %}
-                </td>
-                <td>
-                  <strong>{{ s.full_name or "-" }}</strong>
-                  <div style="margin-top:8px;">
-                    <span class="record-chip service-plan">Service Plan</span>
-                    {% if s.fix_and_join == "Yes" %}
+                  <div class="record-meta">
+                    <strong>{{ record.full_name or "-" }}</strong>
+                    <span>#{{ record.id }}</span>
+                  </div>
+
+                  <div class="record-badges">
+                    <span class="status-pill state-pill {{ record.record_state }}">{{ record.record_state | title }}</span>
+
+                    {% if record.product_label == "One-Off Annual Service" %}
+                      <span class="record-chip one-off">One-Off Annual Service</span>
+                    {% elif record.product_label == "Fix & Join" %}
                       <span class="record-chip fix-join">Fix &amp; Join</span>
-                    {% endif %}
-                  </div>
-                </td>
-                <td>
-                  <div>{{ s.email or "-" }}</div>
-                  <div>{{ s.phone or "-" }}</div>
-                </td>
-                <td>
-                  <div>{{ s.address_line_1 or "" }}</div>
-                  {% if s.address_line_2 %}
-                    <div>{{ s.address_line_2 }}</div>
-                  {% endif %}
-                  <div>{{ s.city or "" }}</div>
-                  <div>{{ s.postcode or "" }}</div>
-                </td>
-                <td>
-                  <div><strong>{{ s.selected_plan or "-" }}</strong></div>
-                  <div>£{{ s.monthly_price or "-" }}/month</div>
-                  <div style="margin-top:8px;">Status: {{ s.status or "-" }}</div>
-
-                  {% if s.fix_and_join == "Yes" %}
-                    <div class="fix-join-admin">
-                      Fix &amp; Join applies<br>
-                      Fee: £{{ s.fix_and_join_fee or fix_and_join_fee }}
-                    </div>
-                  {% endif %}
-                </td>
-                <td>
-                  <div>Broken: {{ s.boiler_broken or "-" }}</div>
-                  <div>Under 3 years: {{ s.boiler_under_3_years or "-" }}</div>
-                  <div>Warranty: {{ s.boiler_warranty_valid or "-" }}</div>
-                  {% if s.boiler_make or s.boiler_model %}
-                    <div style="margin-top:8px;">{{ s.boiler_make or "-" }}{% if s.boiler_model %} / {{ s.boiler_model }}{% endif %}</div>
-                  {% endif %}
-                </td>
-                <td>
-                  <div>Signature name: {{ s.signature_name or "-" }}</div>
-                  <div>Drawn signature: {% if s.signature_data %}Yes{% else %}No{% endif %}</div>
-                  <div>Terms: {% if s.accepted_terms %}Yes{% else %}No{% endif %}</div>
-                  <div>Privacy: {% if s.accepted_privacy %}Yes{% else %}No{% endif %}</div>
-                  <div>Fair usage: {% if s.accepted_fair_usage %}Yes{% else %}No{% endif %}</div>
-                </td>
-                <td>
-                  <div>
-                    Customer email:
-                    {% if s.customer_email_sent %}
-                      <span class="status-pill paid">Sent</span>
                     {% else %}
-                      <span class="status-pill pending">No</span>
+                      <span class="record-chip service-plan">{{ record.product_label or "Service Plan" }}</span>
+                    {% endif %}
+
+                    {% if record.record_type == "signup" %}
+                      <span class="record-chip service-plan">Monthly Service Plan</span>
                     {% endif %}
                   </div>
 
-                  <div style="margin-top:8px;">
-                    Admin alert:
-                    {% if s.admin_email_sent %}
-                      <span class="status-pill paid">Sent</span>
-                    {% else %}
-                      <span class="status-pill pending">No</span>
+                  <div class="record-timestamps">
+                    <div><strong>Created:</strong> {{ record.created_at or "-" }}</div>
+                    {% if record.updated_at %}
+                      <div><strong>Updated:</strong> {{ record.updated_at }}</div>
+                    {% endif %}
+                    {% if record.archived_at %}
+                      <div><strong>Archived:</strong> {{ record.archived_at }}</div>
+                    {% endif %}
+                    {% if record.deleted_at %}
+                      <div><strong>Deleted:</strong> {{ record.deleted_at }}</div>
                     {% endif %}
                   </div>
                 </td>
+
                 <td>
-                  <div><strong>Due:</strong> {{ s.reminder_due_date or "-" }}</div>
+                  <div>{{ record.email or "-" }}</div>
+                  <div>{{ record.phone or "-" }}</div>
+                </td>
 
-                  <div style="margin-top:8px;">
-                    {% if s.reminder_sent %}
-                      <span class="status-pill paid">Reminder sent</span>
-                    {% else %}
-                      <span class="status-pill pending">Not sent</span>
-                    {% endif %}
-                  </div>
-
-                  {% if s.reminder_sent_at %}
-                    <div style="margin-top:8px;">
-                      <strong>Sent at:</strong><br>
-                      {{ s.reminder_sent_at }}
-                    </div>
+                <td>
+                  <div>{{ record.address_line_1 or "" }}</div>
+                  {% if record.address_line_2 %}
+                    <div>{{ record.address_line_2 }}</div>
                   {% endif %}
+                  <div>{{ record.city or record.town or "" }}</div>
+                  {% if record.county %}
+                    <div>{{ record.county }}</div>
+                  {% endif %}
+                  <div>{{ record.postcode or "" }}</div>
+
+                  <div class="small-link-wrap">
+                    <a href="{{ build_maps_link(record) }}" target="_blank" rel="noopener noreferrer">Map</a>
+                    <span> | </span>
+                    <a href="{{ build_directions_link(record) }}" target="_blank" rel="noopener noreferrer">Directions</a>
+                  </div>
                 </td>
+
                 <td>
-                  {% if s.payment_status == "Paid" %}
-                    <span class="status-pill paid">Paid</span>
-                  {% elif s.payment_status == "Link sent" %}
-                    <span class="status-pill sent">Link sent</span>
-                  {% elif s.payment_status == "Failed" %}
-                    <span class="status-pill failed">Failed</span>
+                  <div><strong>{{ record.product_label or "-" }}</strong></div>
+
+                  {% if record.record_type == "signup" %}
+                    {% if record.fix_and_join == "Yes" and record.selected_plan %}
+                      <div>Ongoing plan: {{ record.selected_plan }}{% if record.monthly_price %} | £{{ record.monthly_price }}/month{% endif %}</div>
+                    {% elif record.selected_plan %}
+                      <div>{% if record.monthly_price %}£{{ record.monthly_price }}/month{% endif %}</div>
+                    {% endif %}
                   {% else %}
-                    <span class="status-pill pending">{{ s.payment_status or "Not sent" }}</span>
-                  {% endif %}
-
-                  {% if s.payment_completed_at %}
-                    <div style="margin-top:8px;">
-                      <strong>Paid at:</strong><br>
-                      {{ s.payment_completed_at }}
-                    </div>
-                  {% endif %}
-
-                  {% if s.stripe_checkout_url %}
-                    <div class="small-link-wrap">
-                      <a href="{{ s.stripe_checkout_url }}" target="_blank" rel="noopener noreferrer">Open payment link</a>
-                    </div>
+                    <div>£{{ record.amount_paid or one_off_service_price }} one-off payment</div>
                   {% endif %}
                 </td>
+
                 <td>
-                  <div>
-                    Stored:
-                    {% if s.contract_pdf %}
-                      <span class="status-pill paid">Yes</span>
-                    {% else %}
-                      <span class="status-pill pending">No</span>
+                  <div><strong>{{ record.booking_type_label or "-" }}</strong></div>
+                  <div style="margin-top:8px;"><strong>Status:</strong> {{ record.status or "-" }}</div>
+
+                  {% if record.record_type == "one_off" %}
+                    <div style="margin-top:8px;"><strong>Appointment:</strong> {{ record.appointment_status or "-" }}</div>
+                    <div><strong>Engineer:</strong> {{ record.assigned_engineer or "-" }}</div>
+                    <div><strong>Date:</strong> {{ record.appointment_date or "-" }}</div>
+                    <div><strong>Time:</strong> {{ record.appointment_time or "-" }}</div>
+                  {% else %}
+                    <div style="margin-top:8px;"><strong>Reminder due:</strong> {{ record.reminder_due_date or "-" }}</div>
+                    <div><strong>Reminder sent:</strong> {% if record.reminder_sent %}Yes{% else %}No{% endif %}</div>
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% set payment_status = record.payment_status or "Unknown" %}
+                  {% if payment_status == "Paid" %}
+                    <span class="status-pill paid">Paid</span>
+                  {% elif payment_status == "Link sent" %}
+                    <span class="status-pill sent">Link sent</span>
+                  {% elif payment_status in ["Failed", "Cancelled", "Refunded"] %}
+                    <span class="status-pill failed">{{ payment_status }}</span>
+                  {% else %}
+                    <span class="status-pill pending">{{ payment_status }}</span>
+                  {% endif %}
+
+                  {% if record.record_type == "signup" %}
+                    {% if record.payment_completed_at %}
+                      <div style="margin-top:8px;"><strong>Paid at:</strong> {{ record.payment_completed_at }}</div>
                     {% endif %}
-                  </div>
-
-                  <div style="margin-top:8px;">
-                    <a href="{{ url_for('admin_contract', signup_id=s.id) }}" target="_blank" rel="noopener noreferrer">
-                      View PDF
-                    </a>
-                  </div>
-
-                  {% if s.contract_pdf_generated_at %}
-                    <div style="margin-top:8px;">
-                      <strong>Generated:</strong><br>
-                      {{ s.contract_pdf_generated_at }}
-                    </div>
+                    {% if record.stripe_checkout_session_id %}
+                      <div style="margin-top:8px;"><strong>Session:</strong> {{ record.stripe_checkout_session_id }}</div>
+                    {% endif %}
+                    {% if record.stripe_subscription_id %}
+                      <div style="margin-top:8px;"><strong>Subscription:</strong> {{ record.stripe_subscription_id }}</div>
+                    {% endif %}
+                  {% else %}
+                    <div style="margin-top:8px;"><strong>Amount:</strong> £{{ record.amount_paid or one_off_service_price }}</div>
+                    <div style="margin-top:8px;"><strong>Session:</strong> {{ record.stripe_session_id or "-" }}</div>
+                    <div style="margin-top:8px;"><strong>Payment ref:</strong> {{ record.stripe_payment_intent_id or "-" }}</div>
                   {% endif %}
                 </td>
-                <td>
-                  <div>
-                    <a href="{{ build_maps_link(s) }}" target="_blank" rel="noopener noreferrer">Map</a>
-                  </div>
-                  <div style="margin-top:8px;">
-                    <a href="{{ build_directions_link(s) }}" target="_blank" rel="noopener noreferrer">Directions</a>
-                  </div>
-                </td>
-                <td>
-                  <div style="display:flex; flex-direction:column; gap:10px;">
-                    <form method="POST" action="{{ url_for('resend_payment', id=s.id) }}">
-                      <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
-                    </form>
 
-                    <a href="{{ url_for('admin_contract', signup_id=s.id) }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="btn btn-secondary btn-small">
-                      View PDF
-                    </a>
+                <td>
+                  {% if record.record_type == "signup" %}
+                    <div><strong>Boiler broken:</strong> {{ record.boiler_broken or "-" }}</div>
+                    <div><strong>Under 3 years:</strong> {{ record.boiler_under_3_years or "-" }}</div>
+                    <div><strong>Warranty:</strong> {{ record.boiler_warranty_valid or "-" }}</div>
+                    <div style="margin-top:8px;"><strong>Boiler:</strong> {{ record.boiler_make or "-" }}{% if record.boiler_model %} / {{ record.boiler_model }}{% endif %}</div>
+                    <div style="margin-top:8px;"><strong>Customer email:</strong> {% if record.customer_email_sent %}Sent{% else %}No{% endif %}</div>
+                    <div><strong>Admin alert:</strong> {% if record.admin_email_sent %}Sent{% else %}No{% endif %}</div>
+                    <div style="margin-top:8px;"><strong>PDF:</strong> {% if record.contract_pdf %}Stored{% else %}Not stored{% endif %}</div>
+                    {% if record.admin_notes %}
+                      <div style="margin-top:8px;"><strong>Notes:</strong> {{ record.admin_notes }}</div>
+                    {% endif %}
+                  {% else %}
+                    <div><strong>Boiler:</strong> {{ record.boiler_make or "-" }}{% if record.boiler_model %} / {{ record.boiler_model }}{% endif %}</div>
+                    <div style="margin-top:8px;"><strong>Preferred:</strong> {{ record.preferred_dates or "-" }}</div>
+                    <div style="margin-top:8px;"><strong>Notes:</strong> {{ record.customer_notes or "-" }}</div>
+                    <div style="margin-top:8px;"><strong>Access:</strong> {{ record.access_notes or "-" }}</div>
+                  {% endif %}
+
+                  {% if record.archive_reason %}
+                    <div style="margin-top:8px;"><strong>Archive reason:</strong> {{ record.archive_reason }}</div>
+                  {% endif %}
+                  {% if record.delete_reason %}
+                    <div style="margin-top:8px;"><strong>Delete reason:</strong> {{ record.delete_reason }}</div>
+                  {% endif %}
+                </td>
+
+                <td>
+                  <div class="record-actions">
+                    {% if record.record_type == "one_off" %}
+                      <form method="POST" action="{{ url_for('update_annual_service_booking', booking_id=record.id) }}" class="admin-inline-form compact-admin-form">
+                        <input type="hidden" name="return_query" value="{{ current_query_string }}">
+
+                        <label>
+                          Status
+                          <select name="status">
+                            {% for option in one_off_statuses %}
+                              <option value="{{ option }}" {% if record.status == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                          </select>
+                        </label>
+
+                        <label>
+                          Appointment
+                          <select name="appointment_status">
+                            {% for option in appointment_statuses %}
+                              <option value="{{ option }}" {% if record.appointment_status == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                          </select>
+                        </label>
+
+                        <label>
+                          Engineer
+                          <input type="text" name="assigned_engineer" value="{{ record.assigned_engineer or '' }}">
+                        </label>
+
+                        <label>
+                          Date
+                          <input type="date" name="appointment_date" value="{{ record.appointment_date or '' }}">
+                        </label>
+
+                        <label>
+                          Time
+                          <input type="text" name="appointment_time" value="{{ record.appointment_time or '' }}" placeholder="AM / PM / 10:30">
+                        </label>
+
+                        <button type="submit" class="btn btn-primary btn-small">Save</button>
+                      </form>
+                    {% else %}
+                      <form method="POST" action="{{ url_for('resend_payment', id=record.id) }}" class="inline-admin-button-form">
+                        <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                        <button type="submit" class="btn btn-primary btn-small">Generate new link</button>
+                      </form>
+
+                      <a href="{{ url_for('admin_contract', signup_id=record.id) }}"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         class="btn btn-secondary btn-small">
+                        View PDF
+                      </a>
+                    {% endif %}
+
+                    <div class="record-soft-actions">
+                      {% if record.record_state == "active" %}
+                        <form method="POST" action="{{ url_for('archive_customer', record_type=record.record_type, record_id=record.id) }}" onsubmit="return confirm('Archive this customer? This will hide them from the active admin list but keep their data.');">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="btn btn-secondary btn-small">Archive</button>
+                        </form>
+
+                        <form method="POST" action="{{ url_for('delete_customer', record_type=record.record_type, record_id=record.id) }}" onsubmit="return confirm('Delete this customer from the admin list? This will not permanently erase the database record, but it will move the customer to Deleted.');">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="btn btn-secondary btn-small admin-danger-btn">Delete</button>
+                        </form>
+                      {% elif record.record_state == "archived" %}
+                        <form method="POST" action="{{ url_for('restore_customer', record_type=record.record_type, record_id=record.id) }}" onsubmit="return confirm('Restore this customer to the active admin list?');">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="btn btn-primary btn-small">Restore</button>
+                        </form>
+
+                        <form method="POST" action="{{ url_for('delete_customer', record_type=record.record_type, record_id=record.id) }}" onsubmit="return confirm('Delete this customer from the admin list? This will not permanently erase the database record, but it will move the customer to Deleted.');">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="btn btn-secondary btn-small admin-danger-btn">Delete</button>
+                        </form>
+                      {% else %}
+                        <form method="POST" action="{{ url_for('restore_customer', record_type=record.record_type, record_id=record.id) }}" onsubmit="return confirm('Restore this customer to the active admin list?');">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="btn btn-primary btn-small">Restore</button>
+                        </form>
+                      {% endif %}
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -391,7 +424,7 @@
         </table>
       </div>
     {% else %}
-      <p>No service plan signups yet.</p>
+      <p>No customers matched the current search and filters.</p>
     {% endif %}
   </div>
 </section>
