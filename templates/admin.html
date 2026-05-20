@@ -322,6 +322,9 @@
                     <div><strong>Boiler:</strong> {{ record.boiler_make or "-" }}{% if record.boiler_model %} / {{ record.boiler_model }}{% endif %}</div>
                     <div style="margin-top:8px;"><strong>Preferred:</strong> {{ record.preferred_dates or "-" }}</div>
                     <div style="margin-top:8px;"><strong>Notes:</strong> {{ record.customer_notes or "-" }}</div>
+                    {% if record.admin_notes %}
+                      <div style="margin-top:8px;"><strong>Admin notes:</strong> {{ record.admin_notes }}</div>
+                    {% endif %}
                     <div style="margin-top:8px;"><strong>Access:</strong> {{ record.access_notes or "-" }}</div>
                   {% endif %}
 
@@ -335,6 +338,11 @@
 
                 <td>
                   <div class="record-actions">
+                    <a href="{{ url_for('edit_customer', record_type=record.record_type, record_id=record.id, return_query=current_query_string or None) }}"
+                       class="btn btn-secondary btn-small">
+                      Edit
+                    </a>
+
                     {% if record.record_type == "one_off" %}
                       <form method="POST" action="{{ url_for('update_annual_service_booking', booking_id=record.id) }}" class="admin-inline-form compact-admin-form">
                         <input type="hidden" name="return_query" value="{{ current_query_string }}">

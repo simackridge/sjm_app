@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} | Edit Customer{% endblock %}
+
+{% block content %}
+<section class="page-header admin-edit-header">
+  <div>
+    <h1>Edit Customer</h1>
+    <p>{{ record.record_type_label }} | #{{ record.id }} | {{ record.full_name or "-" }}</p>
+  </div>
+
+  <div class="admin-edit-header-actions">
+    {% if record.record_state == "active" %}
+      <form method="POST" action="{{ archive_action_url }}" onsubmit="return confirm('Archive this customer? This will hide them from the active admin list but keep their data.');">
+        <input type="hidden" name="return_query" value="{{ return_query }}">
+        <button type="submit" class="btn btn-secondary btn-small">Archive</button>
+      </form>
+
+      <form method="POST" action="{{ delete_action_url }}" onsubmit="return confirm('Delete this customer from the admin list? This will not permanently erase the database record, but it will move the customer to Deleted.');">
+        <input type="hidden" name="return_query" value="{{ return_query }}">
+        <button type="submit" class="btn btn-secondary btn-small admin-danger-btn">Delete</button>
+      </form>
+    {% elif record.record_state == "archived" %}
+      <form method="POST" action="{{ restore_action_url }}" onsubmit="return confirm('Restore this customer to the active admin list?');">
+        <input type="hidden" name="return_query" value="{{ return_query }}">
+        <button type="submit" class="btn btn-primary btn-small">Restore</button>
+      </form>
+
+      <form method="POST" action="{{ delete_action_url }}" onsubmit="return confirm('Delete this customer from the admin list? This will not permanently erase the database record, but it will move the customer to Deleted.');">
+        <input type="hidden" name="return_query" value="{{ return_query }}">
+        <button type="submit" class="btn btn-secondary btn-small admin-danger-btn">Delete</button>
+      </form>
+    {% else %}
+      <form method="POST" action="{{ restore_action_url }}" onsubmit="return confirm('Restore this customer to the active admin list?');">
+        <input type="hidden" name="return_query" value="{{ return_query }}">
+        <button type="submit" class="btn btn-primary btn-small">Restore</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+
+{% if record_warning %}
+  <div class="note-box admin-edit-warning">{{ record_warning }}</div>
+{% endif %}
+
+<form method="POST" action="{{ url_for('edit_customer', record_type=record.record_type, record_id=record.id) }}" class="admin-edit-form">
+  <input type="hidden" name="return_query" value="{{ return_query }}">
+
+  <fieldset class="admin-edit-fieldset" {% if not can_edit %}disabled{% endif %}>
+    <section class="card admin-edit-section">
+      <h2>Customer Details</h2>
+      <div class="admin-edit-grid admin-edit-grid-3">
+        <div class="field">
+          <label for="first_name">First name</label>
+          <input id="first_name" type="text" name="first_name" value="{{ form_values.first_name }}">
+        </div>
+
+        <div class="field">
+          <label for="last_name">Last name</label>
+          <input id="last_name" type="text" name="last_name" value="{{ form_values.last_name }}">
+        </div>
+
+        <div class="field">
+          <label for="full_name">Full name</label>
+          <input id="full_name" type="text" name="full_name" value="{{ form_values.full_name }}">
+        </div>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" name="email" value="{{ form_values.email }}">
+        </div>
+
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input id="phone" type="text" name="phone" value="{{ form_values.phone }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="card admin-edit-section">
+      <h2>Address</h2>
+      <div class="admin-edit-grid admin-edit-grid-3">
+        <div class="field full">
+          <label for="address_line_1">Address line 1</label>
+          <input id="address_line_1" type="text" name="address_line_1" value="{{ form_values.address_line_1 }}">
+        </div>
+
+        <div class="field full">
+          <label for="address_line_2">Address line 2</label>
+          <input id="address_line_2" type="text" name="address_line_2" value="{{ form_values.address_line_2 }}">
+        </div>
+
+        <div class="field">
+          <label for="city">Town / city</label>
+          <input id="city" type="text" name="city" value="{{ form_values.city }}">
+        </div>
+
+        {% if record.record_type == "one_off" %}
+          <div class="field">
+            <label for="county">County</label>
+            <input id="county" type="text" name="county" value="{{ form_values.county }}">
+          </div>
+        {% endif %}
+
+        <div class="field">
+          <label for="postcode">Postcode</label>
+          <input id="postcode" type="text" name="postcode" value="{{ form_values.postcode }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="card admin-edit-section">
+      <h2>Boiler Details</h2>
+      <div class="admin-edit-grid admin-edit-grid-3">
+        <div class="field">
+          <label for="boiler_make">Boiler make</label>
+          <input id="boiler_make" type="text" name="boiler_make" value="{{ form_values.boiler_make }}">
+        </div>
+
+        <div class="field">
+          <label for="boiler_model">Boiler model</label>
+          <input id="boiler_model" type="text" name="boiler_model" value="{{ form_values.boiler_model }}">
+        </div>
+
+        {% if record.record_type == "signup" %}
+          <div class="field">
+            <label for="boiler_age">Boiler age</label>
+            <input id="boiler_age" type="text" name="boiler_age" value="{{ form_values.boiler_age }}">
+          </div>
+
+          <div class="field">
+            <label for="boiler_under_3_years">Boiler under 3 years</label>
+            <select id="boiler_under_3_years" name="boiler_under_3_years">
+              {% for option in yes_no_options %}
+                <option value="{{ option.value }}" {% if form_values.boiler_under_3_years == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="boiler_warranty_valid">Warranty status</label>
+            <select id="boiler_warranty_valid" name="boiler_warranty_valid">
+              {% for option in yes_no_options %}
+                <option value="{{ option.value }}" {% if form_values.boiler_warranty_valid == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="boiler_broken">Broken boiler flag</label>
+            <select id="boiler_broken" name="boiler_broken">
+              {% for option in yes_no_options %}
+                <option value="{{ option.value }}" {% if form_values.boiler_broken == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card admin-edit-section">
+      <h2>Plan / Booking Details</h2>
+      <div class="admin-edit-grid admin-edit-grid-3">
+        {% if record.record_type == "signup" %}
+          <div class="field">
+            <label for="selected_plan">Plan type</label>
+            <select id="selected_plan" name="selected_plan">
+              {% for option in plan_options %}
+                <option value="{{ option.value }}" {% if form_values.selected_plan == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="fix_and_join">Fix &amp; Join</label>
+            <select id="fix_and_join" name="fix_and_join">
+              {% for option in yes_no_options %}
+                <option value="{{ option.value }}" {% if form_values.fix_and_join == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% else %}
+          <div class="field">
+            <label>Booking type</label>
+            <div class="readonly-value">{{ record.booking_type_label }}</div>
+          </div>
+        {% endif %}
+
+        <div class="field">
+          <label for="status">Customer status</label>
+          <select id="status" name="status">
+            {% for option in status_options %}
+              <option value="{{ option.value }}" {% if form_values.status == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="payment_status">Payment status</label>
+          <select id="payment_status" name="payment_status">
+            {% for option in payment_options %}
+              <option value="{{ option.value }}" {% if form_values.payment_status == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if record.record_type == "one_off" %}
+          <div class="field">
+            <label for="appointment_status">Appointment status</label>
+            <select id="appointment_status" name="appointment_status">
+              {% for option in appointment_options %}
+                <option value="{{ option.value }}" {% if form_values.appointment_status == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="assigned_engineer">Assigned engineer</label>
+            <input id="assigned_engineer" type="text" name="assigned_engineer" value="{{ form_values.assigned_engineer }}">
+          </div>
+
+          <div class="field">
+            <label for="appointment_date">Appointment date</label>
+            <input id="appointment_date" type="date" name="appointment_date" value="{{ form_values.appointment_date }}">
+          </div>
+
+          <div class="field">
+            <label for="appointment_time">Appointment time</label>
+            <input id="appointment_time" type="text" name="appointment_time" value="{{ form_values.appointment_time }}">
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card admin-edit-section">
+      <h2>Notes</h2>
+      <div class="admin-edit-grid admin-edit-grid-2">
+        {% if record.record_type == "one_off" %}
+          <div class="field full">
+            <label for="customer_notes">Customer notes</label>
+            <textarea id="customer_notes" name="customer_notes" rows="4">{{ form_values.customer_notes }}</textarea>
+          </div>
+        {% endif %}
+
+        <div class="field full">
+          <label for="admin_notes">Admin notes</label>
+          <textarea id="admin_notes" name="admin_notes" rows="4">{{ form_values.admin_notes }}</textarea>
+        </div>
+
+        {% if record.record_type == "one_off" %}
+          <div class="field full">
+            <label for="access_notes">Access notes</label>
+            <textarea id="access_notes" name="access_notes" rows="4">{{ form_values.access_notes }}</textarea>
+          </div>
+
+          <div class="field full">
+            <label for="preferred_dates">Preferred dates / times</label>
+            <textarea id="preferred_dates" name="preferred_dates" rows="4">{{ form_values.preferred_dates }}</textarea>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </fieldset>
+
+  {% for section in readonly_sections %}
+    <section class="card admin-edit-section">
+      <h2>{{ section["title"] }}</h2>
+      <div class="readonly-grid">
+        {% for item in section["items"] %}
+          <div class="readonly-item">
+            <span class="readonly-label">{{ item["label"] }}</span>
+            <div class="readonly-value">{{ item["value"] }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  <div class="admin-edit-actions">
+    <button type="submit" class="btn btn-primary" {% if not can_edit %}disabled{% endif %}>Save changes</button>
+    <a href="{{ reload_edit_url }}" class="btn btn-secondary">Cancel</a>
+    <a href="{{ back_to_admin_url }}" class="btn btn-secondary">Back to admin</a>
+  </div>
+</form>
+{% endblock %}

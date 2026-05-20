@@ -160,6 +160,40 @@ ADMIN_PENDING_PAYMENT_STATUSES = {
     "Checkout created",
     "Link sent",
 }
+ADMIN_YES_NO_OPTIONS = ["", "Yes", "No"]
+ADMIN_SIGNUP_PLAN_OPTIONS = ["", "Essential", "Standard", "Complete"]
+ADMIN_EDIT_FIELD_LABELS = {
+    "first_name": "First name",
+    "last_name": "Last name",
+    "full_name": "Full name",
+    "email": "Email",
+    "phone": "Phone",
+    "address_line_1": "Address line 1",
+    "address_line_2": "Address line 2",
+    "city": "Town / city",
+    "county": "County",
+    "postcode": "Postcode",
+    "boiler_make": "Boiler make",
+    "boiler_model": "Boiler model",
+    "boiler_age": "Boiler age",
+    "boiler_under_3_years": "Boiler under 3 years",
+    "boiler_warranty_valid": "Warranty status",
+    "boiler_broken": "Broken boiler flag",
+    "selected_plan": "Plan type",
+    "fix_and_join": "Fix & Join",
+    "status": "Customer status",
+    "payment_status": "Payment status",
+    "appointment_status": "Appointment status",
+    "assigned_engineer": "Assigned engineer",
+    "appointment_date": "Appointment date",
+    "appointment_time": "Appointment time",
+    "customer_notes": "Customer notes",
+    "admin_notes": "Admin notes",
+    "access_notes": "Access notes",
+    "preferred_dates": "Preferred dates / times",
+}
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+UK_POSTCODE_PATTERN = re.compile(r"^(GIR 0AA|[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})$")
 TERMS_VERSION = os.environ.get("TERMS_VERSION", "v1.0")
 PRIVACY_VERSION = os.environ.get("PRIVACY_VERSION", "v1.0")
 
@@ -890,10 +924,505 @@ def build_admin_records(signups, one_off_bookings):
 
 def fetch_admin_record(record_type, record_id):
     if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
-        return fetch_one_off_booking(record_id)
+        return normalize_admin_one_off_record(fetch_one_off_booking(record_id))
     if record_type == ADMIN_RECORD_TYPE_SIGNUP:
-        return fetch_signup(record_id)
+        return normalize_admin_signup_record(fetch_signup(record_id))
     return None
+
+
+def split_name_parts(full_name):
+    parts = clean(full_name).split(maxsplit=1)
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], parts[1]
+
+
+def normalize_postcode(value):
+    compact = re.sub(r"\s+", "", clean(value).upper())
+    if len(compact) > 3:
+        return f"{compact[:-3]} {compact[-3:]}"
+    return compact
+
+
+def looks_like_valid_email(value):
+    return bool(EMAIL_PATTERN.match(clean(value)))
+
+
+def looks_like_valid_uk_postcode(value):
+    return bool(UK_POSTCODE_PATTERN.match(normalize_postcode(value)))
+
+
+def contains_markup(value):
+    return "<" in (value or "") or ">" in (value or "")
+
+
+def human_bool_or_dash(value):
+    if value in ("", None):
+        return "-"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if value in (1, "1", "true", "True", "yes", "Yes"):
+        return "Yes"
+    if value in (0, "0", "false", "False", "no", "No"):
+        return "No"
+    return value
+
+
+def date_input_value(value):
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def truncate_audit_value(value, max_length=80):
+    value = str(value or "")
+    if len(value) <= max_length:
+        return value
+    return f"{value[: max_length - 3]}..."
+
+
+def build_admin_edit_select_options(values, default_order):
+    options = build_select_options(values, default_order)
+    normalized = []
+    for option in options:
+        value = "" if option["value"] == "__blank__" else option["value"]
+        label = "Unknown / blank" if value == "" else option["label"]
+        normalized.append({"value": value, "label": label})
+    if not any(option["value"] == "" for option in normalized):
+        normalized.insert(0, {"value": "", "label": "Unknown / blank"})
+    return normalized
+
+
+def build_admin_edit_status_options(record_type):
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        values = (
+            fetch_admin_distinct_values("one_off_service_bookings", "status")
+            + ONE_OFF_BOOKING_STATUSES
+            + ["Archived", "Deleted"]
+        )
+        default_order = ONE_OFF_BOOKING_STATUSES + ["Archived", "Deleted", "__blank__"]
+    else:
+        values = fetch_admin_distinct_values("signups", "status") + ADMIN_DEFAULT_STATUS_OPTIONS
+        default_order = ADMIN_DEFAULT_STATUS_OPTIONS + ["__blank__"]
+    return build_admin_edit_select_options(values, default_order)
+
+
+def build_admin_edit_payment_options(record_type):
+    table_name = "one_off_service_bookings" if record_type == ADMIN_RECORD_TYPE_ONE_OFF else "signups"
+    values = fetch_admin_distinct_values(table_name, "payment_status") + ADMIN_DEFAULT_PAYMENT_OPTIONS
+    return build_admin_edit_select_options(values, ADMIN_DEFAULT_PAYMENT_OPTIONS + ["__blank__"])
+
+
+def build_admin_edit_form_values(record_type, record, form_source=None):
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        default_first_name = clean(value_or_first(record, "first_name"))
+        default_last_name = clean(value_or_first(record, "last_name"))
+    else:
+        default_first_name, default_last_name = split_name_parts(value_or_first(record, "full_name"))
+
+    defaults = {
+        "first_name": default_first_name,
+        "last_name": default_last_name,
+        "full_name": clean(value_or_first(record, "full_name")),
+        "email": clean(value_or_first(record, "email")),
+        "phone": clean(value_or_first(record, "phone")),
+        "address_line_1": clean(value_or_first(record, "address_line_1", "address_line1")),
+        "address_line_2": clean(value_or_first(record, "address_line_2", "address_line2")),
+        "city": clean(value_or_first(record, "city", "town")),
+        "county": clean(value_or_first(record, "county")),
+        "postcode": normalize_postcode(value_or_first(record, "postcode")),
+        "boiler_make": clean(value_or_first(record, "boiler_make")),
+        "boiler_model": clean(value_or_first(record, "boiler_model")),
+        "boiler_age": clean(value_or_first(record, "boiler_age")),
+        "boiler_under_3_years": clean(value_or_first(record, "boiler_under_3_years")),
+        "boiler_warranty_valid": clean(value_or_first(record, "boiler_warranty_valid")),
+        "boiler_broken": clean(value_or_first(record, "boiler_broken")),
+        "selected_plan": clean(value_or_first(record, "selected_plan")),
+        "fix_and_join": clean(value_or_first(record, "fix_and_join")),
+        "status": clean(value_or_first(record, "status")),
+        "payment_status": clean(value_or_first(record, "payment_status")),
+        "appointment_status": clean(value_or_first(record, "appointment_status")),
+        "assigned_engineer": clean(value_or_first(record, "assigned_engineer")),
+        "appointment_date": date_input_value(value_or_first(record, "appointment_date")),
+        "appointment_time": clean(value_or_first(record, "appointment_time")),
+        "customer_notes": clean(value_or_first(record, "customer_notes")),
+        "admin_notes": clean(value_or_first(record, "admin_notes")),
+        "access_notes": clean(value_or_first(record, "access_notes")),
+        "preferred_dates": clean(value_or_first(record, "preferred_dates")),
+    }
+
+    if form_source is None:
+        return defaults
+
+    values = {}
+    for key in defaults:
+        values[key] = clean(form_source.get(key))
+    values["postcode"] = normalize_postcode(values.get("postcode"))
+    return values
+
+
+def build_admin_readonly_sections(record_type, record):
+    sections = [
+        {
+            "title": "Payment / Legal Records",
+            "items": [
+                {"label": "Record ID", "value": record.get("id")},
+                {"label": "Created at", "value": record.get("created_at") or "-"},
+                {"label": "Updated at", "value": record.get("updated_at") or "-"},
+                {"label": "Payment status", "value": record.get("payment_status") or "-"},
+            ],
+        },
+        {
+            "title": "Admin Metadata",
+            "items": [
+                {"label": "State", "value": record.get("record_state", "active").title()},
+                {"label": "Archived at", "value": record.get("archived_at") or "-"},
+                {"label": "Archived by", "value": record.get("archived_by") or "-"},
+                {"label": "Archive reason", "value": record.get("archive_reason") or "-"},
+                {"label": "Deleted at", "value": record.get("deleted_at") or "-"},
+                {"label": "Deleted by", "value": record.get("deleted_by") or "-"},
+                {"label": "Delete reason", "value": record.get("delete_reason") or "-"},
+            ],
+        },
+    ]
+
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        sections[0]["items"].extend(
+            [
+                {"label": "Booking type", "value": record.get("booking_type_label") or "-"},
+                {"label": "Stripe session ID", "value": record.get("stripe_session_id") or "-"},
+                {
+                    "label": "Stripe payment intent ID",
+                    "value": record.get("stripe_payment_intent_id") or "-",
+                },
+                {"label": "Amount paid", "value": record.get("amount_paid") or "-"},
+                {
+                    "label": "Customer email sent",
+                    "value": human_bool_or_dash(record.get("customer_email_sent")),
+                },
+                {
+                    "label": "Admin email sent",
+                    "value": human_bool_or_dash(record.get("admin_email_sent")),
+                },
+                {
+                    "label": "Acknowledged contact",
+                    "value": human_bool_or_dash(record.get("acknowledged_contact")),
+                },
+            ]
+        )
+    else:
+        sections[0]["items"].extend(
+            [
+                {"label": "Stripe checkout URL", "value": record.get("stripe_checkout_url") or "-"},
+                {
+                    "label": "Stripe checkout session ID",
+                    "value": record.get("stripe_checkout_session_id") or "-",
+                },
+                {"label": "Stripe customer ID", "value": record.get("stripe_customer_id") or "-"},
+                {
+                    "label": "Stripe subscription ID",
+                    "value": record.get("stripe_subscription_id") or "-",
+                },
+                {
+                    "label": "Payment completed at",
+                    "value": record.get("payment_completed_at") or "-",
+                },
+                {
+                    "label": "Signature name",
+                    "value": record.get("signature_name") or "-",
+                },
+                {
+                    "label": "Signature data stored",
+                    "value": "Yes" if record.get("signature_data") else "No",
+                },
+                {
+                    "label": "Terms accepted",
+                    "value": human_bool_or_dash(record.get("accepted_terms")),
+                },
+                {
+                    "label": "Privacy accepted",
+                    "value": human_bool_or_dash(record.get("accepted_privacy")),
+                },
+                {
+                    "label": "Fair usage accepted",
+                    "value": human_bool_or_dash(record.get("accepted_fair_usage")),
+                },
+                {"label": "Terms version", "value": record.get("terms_version") or "-"},
+                {"label": "Privacy version", "value": record.get("privacy_version") or "-"},
+                {"label": "Signed at", "value": record.get("signed_at") or "-"},
+                {"label": "IP address", "value": record.get("ip_address") or "-"},
+                {"label": "User agent", "value": record.get("user_agent") or "-"},
+                {
+                    "label": "Contract PDF filename",
+                    "value": record.get("contract_pdf_filename") or "-",
+                },
+                {
+                    "label": "Contract PDF generated at",
+                    "value": record.get("contract_pdf_generated_at") or "-",
+                },
+            ]
+        )
+
+    return sections
+
+
+def build_admin_edit_options(record_type):
+    return {
+        "status_options": build_admin_edit_status_options(record_type),
+        "payment_options": build_admin_edit_payment_options(record_type),
+        "yes_no_options": [
+            {"value": value, "label": value or "Unknown / blank"} for value in ADMIN_YES_NO_OPTIONS
+        ],
+        "plan_options": [
+            {"value": value, "label": value or "Unknown / blank"}
+            for value in ADMIN_SIGNUP_PLAN_OPTIONS
+        ],
+        "appointment_options": [{"value": "", "label": "Unknown / blank"}] + [
+            {"value": value, "label": value} for value in ONE_OFF_APPOINTMENT_STATUSES
+        ],
+    }
+
+
+def build_back_to_admin_url(return_query):
+    admin_url = url_for("admin")
+    return f"{admin_url}?{return_query}" if clean(return_query) else admin_url
+
+
+def build_admin_edit_context(record_type, record, form_values, return_query):
+    options = build_admin_edit_options(record_type)
+    record_state = record.get("record_state", "active")
+    return {
+        "record": record,
+        "form_values": form_values,
+        "readonly_sections": build_admin_readonly_sections(record_type, record),
+        "status_options": options["status_options"],
+        "payment_options": options["payment_options"],
+        "yes_no_options": options["yes_no_options"],
+        "plan_options": options["plan_options"],
+        "appointment_options": options["appointment_options"],
+        "return_query": return_query,
+        "back_to_admin_url": build_back_to_admin_url(return_query),
+        "reload_edit_url": url_for(
+            "edit_customer",
+            record_type=record_type,
+            record_id=record.get("id"),
+            return_query=return_query or None,
+        ),
+        "can_edit": record_state != "deleted",
+        "record_warning": (
+            "This customer is currently deleted/hidden. Restore before making normal workflow changes."
+            if record_state == "deleted"
+            else "This customer is archived. You can still review and update their details."
+            if record_state == "archived"
+            else ""
+        ),
+        "archive_action_url": url_for(
+            "archive_customer", record_type=record_type, record_id=record.get("id")
+        ),
+        "delete_action_url": url_for(
+            "delete_customer", record_type=record_type, record_id=record.get("id")
+        ),
+        "restore_action_url": url_for(
+            "restore_customer", record_type=record_type, record_id=record.get("id")
+        ),
+    }
+
+
+def summarize_admin_changes(changes):
+    summaries = []
+    for field_name, old_value, new_value in changes:
+        label = ADMIN_EDIT_FIELD_LABELS.get(field_name, field_name.replace("_", " ").title())
+        summaries.append(
+            f"{label} changed from '{truncate_audit_value(old_value or '-')}' to '{truncate_audit_value(new_value or '-')}'"
+        )
+    return "; ".join(summaries)
+
+
+def validate_admin_customer_form(record_type, record, form_values):
+    errors = []
+    updates = {}
+    change_log = []
+    record_full_name = clean(value_or_first(record, "full_name"))
+    original_email = clean(value_or_first(record, "email"))
+    original_phone = clean(value_or_first(record, "phone"))
+    original_address_line_1 = clean(value_or_first(record, "address_line_1", "address_line1"))
+    original_city = clean(value_or_first(record, "city", "town"))
+    original_postcode = normalize_postcode(value_or_first(record, "postcode"))
+
+    combined_name = clean(form_values.get("full_name")) or " ".join(
+        part for part in [clean(form_values.get("first_name")), clean(form_values.get("last_name"))] if part
+    )
+    form_values["full_name"] = combined_name
+
+    required_checks = [
+        ("full_name", combined_name, record_full_name),
+        ("email", clean(form_values.get("email")), original_email),
+        ("phone", clean(form_values.get("phone")), original_phone),
+        ("address_line_1", clean(form_values.get("address_line_1")), original_address_line_1),
+        ("city", clean(form_values.get("city")), original_city),
+        ("postcode", normalize_postcode(form_values.get("postcode")), original_postcode),
+    ]
+
+    for field_name, new_value, old_value in required_checks:
+        if not new_value and old_value:
+            errors.append(f"{ADMIN_EDIT_FIELD_LABELS[field_name]} cannot be blank for this customer.")
+
+    for field_name, new_value in form_values.items():
+        if isinstance(new_value, str) and contains_markup(new_value):
+            errors.append(f"Please remove HTML or script-style characters from {ADMIN_EDIT_FIELD_LABELS.get(field_name, field_name)}.")
+
+    email_value = clean(form_values.get("email"))
+    if email_value and not looks_like_valid_email(email_value):
+        errors.append("Please enter a valid email address.")
+
+    phone_value = clean(form_values.get("phone"))
+    if phone_value and phone_value != original_phone:
+        if not re.fullmatch(r"[0-9+()\-\s]+", phone_value):
+            errors.append("Please enter a valid phone number.")
+        digits = re.sub(r"\D", "", phone_value)
+        if len(digits) < 7:
+            errors.append("Please enter a valid phone number.")
+
+    postcode_value = normalize_postcode(form_values.get("postcode"))
+    form_values["postcode"] = postcode_value
+    if postcode_value and not looks_like_valid_uk_postcode(postcode_value):
+        errors.append("Please enter a valid UK postcode.")
+
+    status_values = {option["value"] for option in build_admin_edit_status_options(record_type)}
+    payment_values = {option["value"] for option in build_admin_edit_payment_options(record_type)}
+
+    if clean(form_values.get("status")) not in status_values:
+        errors.append("Please choose a valid customer status.")
+
+    if clean(form_values.get("payment_status")) not in payment_values:
+        errors.append("Please choose a valid payment status.")
+
+    appointment_date = None
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        appointment_status = clean(form_values.get("appointment_status"))
+        if appointment_status and appointment_status not in ONE_OFF_APPOINTMENT_STATUSES:
+            errors.append("Please choose a valid appointment status.")
+        appointment_date_value = clean(form_values.get("appointment_date"))
+        if appointment_date_value:
+            try:
+                appointment_date = datetime.strptime(appointment_date_value, "%Y-%m-%d").date()
+            except ValueError:
+                errors.append("Please enter a valid appointment date.")
+    else:
+        for field_name in ("boiler_under_3_years", "boiler_warranty_valid", "boiler_broken", "fix_and_join"):
+            value = clean(form_values.get(field_name))
+            if value not in ADMIN_YES_NO_OPTIONS:
+                errors.append(f"Please choose a valid value for {ADMIN_EDIT_FIELD_LABELS[field_name]}.")
+
+        selected_plan = clean(form_values.get("selected_plan"))
+        if selected_plan not in ADMIN_SIGNUP_PLAN_OPTIONS:
+            errors.append("Please choose a valid plan type.")
+        if clean(form_values.get("fix_and_join")) == "Yes" and selected_plan == "Essential":
+            errors.append("Fix & Join customers cannot be set to the Essential Plan.")
+
+    if errors:
+        return None, errors, []
+
+    if record_type == ADMIN_RECORD_TYPE_ONE_OFF:
+        updates = {
+            "first_name": clean(form_values.get("first_name")) or None,
+            "last_name": clean(form_values.get("last_name")) or None,
+            "full_name": combined_name or None,
+            "email": email_value or None,
+            "phone": phone_value or None,
+            "address_line_1": clean(form_values.get("address_line_1")) or None,
+            "address_line_2": clean(form_values.get("address_line_2")) or None,
+            "town": clean(form_values.get("city")) or None,
+            "county": clean(form_values.get("county")) or None,
+            "postcode": postcode_value or None,
+            "boiler_make": clean(form_values.get("boiler_make")) or None,
+            "boiler_model": clean(form_values.get("boiler_model")) or None,
+            "customer_notes": clean(form_values.get("customer_notes")) or None,
+            "admin_notes": clean(form_values.get("admin_notes")) or None,
+            "access_notes": clean(form_values.get("access_notes")) or None,
+            "preferred_dates": clean(form_values.get("preferred_dates")) or None,
+            "status": clean(form_values.get("status")) or None,
+            "payment_status": clean(form_values.get("payment_status")) or None,
+            "appointment_status": clean(form_values.get("appointment_status")) or None,
+            "assigned_engineer": clean(form_values.get("assigned_engineer")) or None,
+            "appointment_date": appointment_date,
+            "appointment_time": clean(form_values.get("appointment_time")) or None,
+        }
+    else:
+        selected_plan = clean(form_values.get("selected_plan"))
+        fix_and_join_value = clean(form_values.get("fix_and_join"))
+        boiler_broken_value = clean(form_values.get("boiler_broken"))
+        updates = {
+            "full_name": combined_name or None,
+            "email": email_value or None,
+            "phone": phone_value or None,
+            "address_line1": clean(form_values.get("address_line_1")) or None,
+            "address_line2": clean(form_values.get("address_line_2")) or None,
+            "address_line_1": clean(form_values.get("address_line_1")) or None,
+            "address_line_2": clean(form_values.get("address_line_2")) or None,
+            "city": clean(form_values.get("city")) or None,
+            "postcode": postcode_value or None,
+            "boiler_make": clean(form_values.get("boiler_make")) or None,
+            "boiler_model": clean(form_values.get("boiler_model")) or None,
+            "boiler_age": clean(form_values.get("boiler_age")) or None,
+            "boiler_under_3_years": clean(form_values.get("boiler_under_3_years")) or None,
+            "boiler_warranty_valid": clean(form_values.get("boiler_warranty_valid")) or None,
+            "boiler_broken": boiler_broken_value or None,
+            "boiler_working": "No" if boiler_broken_value == "Yes" else "Yes" if boiler_broken_value == "No" else None,
+            "selected_plan": selected_plan or None,
+            "monthly_price": PLAN_PRICES.get(selected_plan) if selected_plan else None,
+            "fix_and_join": fix_and_join_value or None,
+            "fix_and_join_fee": FIX_AND_JOIN_FEE if fix_and_join_value == "Yes" else None,
+            "status": clean(form_values.get("status")) or None,
+            "payment_status": clean(form_values.get("payment_status")) or None,
+            "admin_notes": clean(form_values.get("admin_notes")) or None,
+        }
+
+    for field_name, new_value in updates.items():
+        if field_name in {"address_line1", "address_line2", "monthly_price", "fix_and_join_fee", "boiler_working"}:
+            continue
+        old_value = value_or_first(record, field_name)
+        if field_name == "town":
+            old_value = value_or_first(record, "town", "city")
+        if field_name == "address_line1":
+            old_value = value_or_first(record, "address_line1", "address_line_1")
+        if field_name == "address_line2":
+            old_value = value_or_first(record, "address_line2", "address_line_2")
+        if field_name == "monthly_price" and new_value is None and clean(value_or_first(record, "monthly_price")) == "":
+            old_value = None
+
+        comparable_old = "" if old_value is None else str(old_value)
+        comparable_new = "" if new_value is None else str(new_value)
+        if comparable_old != comparable_new:
+            change_log.append((field_name, comparable_old, comparable_new))
+
+    return updates, errors, change_log
+
+
+def save_admin_customer_updates(record_type, record_id, updates):
+    table_name = get_admin_table_name(record_type)
+    if not table_name:
+        raise ValueError("Unknown record type")
+
+    update_fields = list(updates.keys()) + ["updated_at"]
+    assignments = ", ".join(f"{field_name}=%s" for field_name in update_fields)
+    values = [updates[field_name] for field_name in updates] + [datetime.now(UTC), record_id]
+
+    db_execute(
+        f"""
+        UPDATE {table_name}
+        SET {assignments}
+        WHERE id=%s
+        """,
+        tuple(values),
+        commit=True,
+    )
 
 
 def get_eligible_plans(broken, under3, warranty):
@@ -1306,6 +1835,7 @@ def ensure_extra_columns():
                     boiler_make TEXT,
                     boiler_model TEXT,
                     customer_notes TEXT,
+                    admin_notes TEXT,
                     access_notes TEXT,
                     preferred_dates TEXT,
                     acknowledged_contact BOOLEAN DEFAULT FALSE,
@@ -1337,6 +1867,7 @@ def ensure_extra_columns():
             cur.execute(
                 """
                 ALTER TABLE one_off_service_bookings
+                ADD COLUMN IF NOT EXISTS admin_notes TEXT,
                 ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP,
                 ADD COLUMN IF NOT EXISTS archived_by TEXT,
@@ -2775,6 +3306,71 @@ def admin():
         build_maps_link=build_maps_link,
         build_directions_link=build_directions_link,
         build_full_address=build_full_address,
+    )
+
+
+@app.route("/admin/customer/<record_type>/<int:record_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_customer(record_type, record_id):
+    ensure_extra_columns()
+
+    return_query = clean(request.values.get("return_query"))
+    record = fetch_admin_record(record_type, record_id)
+    if not record:
+        flash("Customer record not found.", "error")
+        return redirect_to_admin(return_query)
+
+    if request.method == "POST":
+        form_values = build_admin_edit_form_values(record_type, record, request.form)
+
+        if record.get("record_state") == "deleted":
+            flash(
+                "This customer is currently deleted/hidden. Restore before making normal workflow changes.",
+                "error",
+            )
+            return render_template(
+                "admin_customer_edit.html",
+                **build_admin_edit_context(record_type, record, form_values, return_query),
+            )
+
+        updates, errors, change_log = validate_admin_customer_form(record_type, record, form_values)
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template(
+                "admin_customer_edit.html",
+                **build_admin_edit_context(record_type, record, form_values, return_query),
+            )
+
+        if change_log:
+            save_admin_customer_updates(record_type, record_id, updates)
+            log_admin_action(
+                record_id,
+                record_type,
+                "update_customer",
+                summarize_admin_changes(change_log) or "Updated customer record.",
+            )
+            flash("Customer details updated.", "success")
+        else:
+            flash("No changes were made.", "success")
+
+        return redirect(
+            url_for(
+                "edit_customer",
+                record_type=record_type,
+                record_id=record_id,
+                return_query=return_query or None,
+            )
+        )
+
+    return render_template(
+        "admin_customer_edit.html",
+        **build_admin_edit_context(
+            record_type,
+            record,
+            build_admin_edit_form_values(record_type, record),
+            return_query,
+        ),
     )
 
 
