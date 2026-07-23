@@ -23,12 +23,7 @@
         <a href="{{ url_for('index') }}">Home</a>
         <a href="{{ url_for('signup') }}">Sign Up</a>
         <a href="{{ url_for('book_annual_service') }}">Book Annual Service</a>
-        <a href="https://www.sjmheating.co.uk/service-plans" target="_blank" rel="noopener noreferrer">
-          Service Plans Page
-        </a>
-        <a href="{{ url_for('terms') }}" target="_blank" rel="noopener noreferrer">Terms</a>
-        <a href="{{ url_for('privacy') }}" target="_blank" rel="noopener noreferrer">Privacy</a>
-        <a href="{{ url_for('admin_login') }}">Admin</a>
+        <a href="{{ url_for('admin_login') }}" class="header-link-muted">Admin</a>
       </nav>
     </div>
   </header>
@@ -65,21 +60,22 @@
         {% if company_reg %} | {{ company_reg }}{% endif %}
       </div>
 
-      <div>
+      <div class="footer-contact">
         {% if company_phone %}
           <a class="text-link" href="tel:{{ company_phone }}">{{ company_phone }}</a>
         {% endif %}
 
         {% if company_email %}
-          {% if company_phone %} | {% endif %}
           <a class="text-link" href="mailto:{{ company_email }}">{{ company_email }}</a>
         {% endif %}
 
         {% if company_website %}
-          | <a class="text-link" href="{{ company_website }}" target="_blank" rel="noopener noreferrer">Website</a>
+          <a class="text-link" href="{{ company_website }}" target="_blank" rel="noopener noreferrer">Website</a>
         {% endif %}
 
-        | <a class="text-link" href="https://www.sjmheating.co.uk/service-plans" target="_blank" rel="noopener noreferrer">Service Plans Page</a>
+        <a class="text-link" href="https://www.sjmheating.co.uk/service-plans" target="_blank" rel="noopener noreferrer">Service Plans</a>
+        <a class="text-link" href="{{ url_for('terms') }}" target="_blank" rel="noopener noreferrer">Terms</a>
+        <a class="text-link" href="{{ url_for('privacy') }}" target="_blank" rel="noopener noreferrer">Privacy</a>
       </div>
     </div>
   </footer>

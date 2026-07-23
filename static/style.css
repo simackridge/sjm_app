@@ -108,6 +108,14 @@ img{
   color:var(--text);
 }
 
+.header-link-muted{
+  opacity:0.6;
+  font-weight:600;
+  font-size:0.9rem;
+  padding-left:14px;
+  border-left:1px solid var(--border);
+}
+
 .container{
   max-width:var(--max-width);
   margin:0 auto;
@@ -134,6 +142,12 @@ img{
 
 .text-link{
   color:var(--text);
+}
+
+.footer-contact{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 16px;
 }
 
 /* ---------------------------------
@@ -373,10 +387,6 @@ textarea:focus{
 .plan-card.featured{
   border-color:rgba(255,106,0,0.45);
   box-shadow:0 0 0 1px rgba(255,106,0,0.15), var(--shadow);
-}
-
-.plan-card.utility-card{
-  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
 }
 
 .plan-card h3{

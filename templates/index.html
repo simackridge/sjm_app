@@ -59,16 +59,15 @@
       </ul>
       <a href="{{ url_for('signup') }}" class="btn btn-secondary btn-wide">Choose Complete</a>
     </div>
-
-    <div class="plan-card utility-card">
-      <h3>One-Off Annual Boiler Service</h3>
-      <p class="price">£{{ one_off_service_price }} one-off payment</p>
-      <p class="plan-card-copy">
-        Just need your yearly boiler service without joining a monthly plan? Book your annual service online and we’ll contact you to confirm the appointment.
-      </p>
-      <a href="{{ url_for('book_annual_service') }}" class="btn btn-secondary btn-wide">Book annual service</a>
-    </div>
   </div>
+</section>
+
+<section class="cta">
+  <h2>One-Off Annual Boiler Service</h2>
+  <p>
+    Just need your yearly boiler service without joining a monthly plan? Book your annual service online for £{{ one_off_service_price }} and we’ll contact you to confirm the appointment.
+  </p>
+  <a href="{{ url_for('book_annual_service') }}" class="btn btn-secondary">Book annual service</a>
 </section>
 
 <section class="cta">
